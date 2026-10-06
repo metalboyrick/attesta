@@ -6,7 +6,7 @@ This folder holds the control catalog for Attesta. The machine-readable copy is 
 
 A control is one rule an AI agent must follow while it moves money. Each control has a test that a program can run with no human judgment. The same inputs always give the same pass or fail.
 
-Every few minutes our Chainlink CRE workflow runs the tests for each agent. It writes the result and a hash of the evidence to the `AttestationRegistry` contract on Sepolia. If a control fails, the Solana guard program freezes the agent so it can't spend until a person looks at it.
+Our Chainlink CRE workflow runs the tests for each agent. Its cron is set to every 5 minutes, but deploying a workflow to the CRE network is Early Access, so today it runs only when we start `cre workflow simulate` by hand. It writes the result and a hash of the evidence to the `AttestationRegistry` contract on Sepolia. If a control fails, the Solana guard program freezes the agent so it can't spend until a person looks at it.
 
 Each control in `catalog.json` has these fields:
 
