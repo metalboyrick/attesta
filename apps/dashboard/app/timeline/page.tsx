@@ -99,7 +99,7 @@ export default async function TimelinePage({ searchParams }: { searchParams: Pro
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3">
                     <ChainTag chain={entry.chain} />
-                    <TxLink chain={entry.chain} tx={(failed[0] ?? entry.results[0]).txHash} />
+                    <TxLink synthetic={snap.mode === "fixture"} chain={entry.chain} tx={(failed[0] ?? entry.results[0]).txHash} />
                     {entry.results.length > 1 && <span className="text-xs text-ink-3">{entry.results.length - failed.length}/{entry.results.length} pass</span>}
                   </div>
                 </li>
@@ -125,7 +125,7 @@ export default async function TimelinePage({ searchParams }: { searchParams: Pro
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-x-3">
                   <ChainTag chain={e.chain} />
-                  <TxLink chain={e.chain} tx={e.txHash} />
+                  <TxLink synthetic={snap.mode === "fixture"} chain={e.chain} tx={e.txHash} />
                   {(e.kind === "freeze" || e.kind === "unfreeze") && <span className="font-mono text-[11px] text-ink-3">reason {e.reasonCode}</span>}
                 </div>
               </li>

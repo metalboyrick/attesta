@@ -3,9 +3,9 @@ import { AGENTS } from "./agents";
 import type { ControlDef, ControlResult, TimelineEvent } from "./types";
 
 /**
- * Deterministic demo data. Runs land on the same 5-minute cron as the CRE
- * workflow, so the fixture keeps moving while the page is open. Every hash
- * here is synthetic and its explorer link will not resolve.
+ * Deterministic demo data. A synthetic run lands every 5 minutes so the
+ * fixture keeps moving while the page is open. Every hash here is synthetic;
+ * the UI renders them as plain text, never as explorer links.
  */
 const SLOT = 300;
 const RUNS = 12;

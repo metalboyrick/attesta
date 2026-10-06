@@ -27,7 +27,7 @@ function ControlSpec({ c }: { c: ControlDef }) {
         </span>
       </summary>
       <dl className="mt-3 space-y-2 border-l-2 border-rule pl-3 text-sm text-ink-2">
-        {[["Objective", c.objective], ["Test", c.test], ["Evidence", c.evidence], ["Runs", c.frequency]]
+        {[["Objective", c.objective], ["Test", c.test], ["Evidence", c.evidence]]
           .filter(([, v]) => v)
           .map(([k, v]) => (
             <div key={k}>
@@ -91,14 +91,18 @@ export default async function AgentPage({ params }: { params: Promise<{ slug: st
               {freeze && (
                 <p className="mt-2 text-sm opacity-80">
                   Frozen <Ago ts={freeze.ts} serverNow={snap.generatedAt} /> in tx{" "}
-                  <a
-                    className="font-mono underline underline-offset-4"
-                    target="_blank"
-                    rel="noreferrer"
-                    href={`https://explorer.solana.com/tx/${freeze.txHash}?cluster=devnet`}
-                  >
-                    {short(freeze.txHash, 6, 6)}
-                  </a>
+                  {snap.mode === "fixture" ? (
+                    <span className="font-mono">{short(freeze.txHash, 6, 6)} (synthetic)</span>
+                  ) : (
+                    <a
+                      className="font-mono underline underline-offset-4"
+                      target="_blank"
+                      rel="noreferrer"
+                      href={`https://explorer.solana.com/tx/${freeze.txHash}?cluster=devnet`}
+                    >
+                      {short(freeze.txHash, 6, 6)}
+                    </a>
+                  )}
                 </p>
               )}
             </div>
@@ -145,7 +149,7 @@ export default async function AgentPage({ params }: { params: Promise<{ slug: st
                   </td>
                   <td className="py-3.5 pr-4 align-top"><PassMark pass={r?.pass} implemented={c.implemented} /></td>
                   <td className="py-3.5 pr-4 align-top">{r ? <CopyHash value={r.evidenceHash} display={short(r.evidenceHash, 8, 6)} /> : "–"}</td>
-                  <td className="py-3.5 pr-4 align-top">{r ? <TxLink chain={r.chain} tx={r.txHash} /> : "–"}</td>
+                  <td className="py-3.5 pr-4 align-top">{r ? <TxLink synthetic={snap.mode === "fixture"} chain={r.chain} tx={r.txHash} /> : "–"}</td>
                   <td className="tnum py-3.5 align-top text-sm text-ink-3">{r ? <Ago ts={r.ts} serverNow={snap.generatedAt} /> : "–"}</td>
                 </tr>
               );
@@ -167,7 +171,7 @@ export default async function AgentPage({ params }: { params: Promise<{ slug: st
                 {r && (
                   <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
                     <CopyHash value={r.evidenceHash} display={short(r.evidenceHash, 6, 4)} />
-                    <TxLink chain={r.chain} tx={r.txHash} />
+                    <TxLink synthetic={snap.mode === "fixture"} chain={r.chain} tx={r.txHash} />
                     <span className="text-xs text-ink-3"><Ago ts={r.ts} serverNow={snap.generatedAt} /></span>
                   </div>
                 )}

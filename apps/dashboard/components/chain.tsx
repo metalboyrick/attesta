@@ -4,7 +4,16 @@ import type { Chain } from "@/lib/types";
 
 export const short = (s: string, head = 6, tail = 4) => (s.length <= head + tail + 1 ? s : `${s.slice(0, head)}…${s.slice(-tail)}`);
 
-export function TxLink({ chain, tx, label }: { chain: Chain; tx: string; label?: string }) {
+export function TxLink({ chain, tx, label, synthetic }: { chain: Chain; tx: string; label?: string; synthetic?: boolean }) {
+  // Fixture hashes never render as explorer links, so they cannot pass as real transactions.
+  if (synthetic) {
+    return (
+      <span title="Synthetic fixture hash, not an on-chain transaction" className="inline-flex items-center gap-1.5 font-mono text-xs text-ink-3">
+        {label ?? short(tx, tx.startsWith("0x") ? 6 : 5)}
+        <span className="rounded-sm border border-rule-strong px-1 font-sans text-[10px] leading-4">synthetic</span>
+      </span>
+    );
+  }
   return (
     <a
       href={txUrl(chain, tx)}

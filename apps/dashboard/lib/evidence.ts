@@ -13,6 +13,8 @@ export type EvidenceRow = {
   tsIso: string;
   soc2: string[];
   iso42001: string[];
+  /** "fixture" rows carry synthetic hashes and must not be used as evidence */
+  dataMode: Snapshot["mode"];
 };
 
 export function evidenceRows(snap: Snapshot, opts: { agent?: string; latestOnly?: boolean } = {}): EvidenceRow[] {
@@ -38,6 +40,7 @@ export function evidenceRows(snap: Snapshot, opts: { agent?: string; latestOnly?
         tsIso: new Date(r.ts * 1000).toISOString(),
         soc2: c?.soc2 ?? [],
         iso42001: c?.iso42001 ?? [],
+        dataMode: snap.mode,
       };
     })
     .sort((a, b) => b.ts - a.ts || a.agent.localeCompare(b.agent) || a.control.localeCompare(b.control));
@@ -46,9 +49,9 @@ export function evidenceRows(snap: Snapshot, opts: { agent?: string; latestOnly?
 const cell = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
 
 export function toCsv(rows: EvidenceRow[]): string {
-  const header = ["control", "control_title", "agent", "agent_registry_id", "pass", "evidence_hash", "tx_hash", "chain", "ts", "ts_iso", "soc2_tsc", "iso_42001"];
+  const header = ["control", "control_title", "agent", "agent_registry_id", "pass", "evidence_hash", "tx_hash", "chain", "ts", "ts_iso", "soc2_tsc", "iso_42001", "data_mode"];
   const lines = rows.map(r =>
-    [r.control, r.controlTitle, r.agent, r.agentRegistryId, String(r.pass), r.evidenceHash, r.txHash, r.chain, String(r.ts), r.tsIso, r.soc2.join(" "), r.iso42001.join(" ")]
+    [r.control, r.controlTitle, r.agent, r.agentRegistryId, String(r.pass), r.evidenceHash, r.txHash, r.chain, String(r.ts), r.tsIso, r.soc2.join(" "), r.iso42001.join(" "), r.dataMode]
       .map(cell)
       .join(","),
   );

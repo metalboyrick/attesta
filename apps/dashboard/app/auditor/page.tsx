@@ -83,7 +83,7 @@ export default async function AuditorPage({ searchParams }: { searchParams: Prom
             </div>
             <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
               <CopyHash value={r.evidenceHash} display={short(r.evidenceHash, 6, 4)} />
-              <TxLink chain="sepolia" tx={r.txHash} />
+              <TxLink synthetic={snap.mode === "fixture"} chain="sepolia" tx={r.txHash} />
               <span className="tnum font-mono text-[11px] text-ink-3">{r.tsIso.slice(5, 16).replace("T", " ")}</span>
             </div>
           </li>
@@ -107,7 +107,7 @@ export default async function AuditorPage({ searchParams }: { searchParams: Prom
                 <td className="py-2.5 pr-4">{r.agent}</td>
                 <td className="py-2.5 pr-4"><PassMark pass={r.pass} /></td>
                 <td className="py-2.5 pr-4"><CopyHash value={r.evidenceHash} display={short(r.evidenceHash, 6, 4)} /></td>
-                <td className="py-2.5 pr-4"><TxLink chain="sepolia" tx={r.txHash} /></td>
+                <td className="py-2.5 pr-4"><TxLink synthetic={snap.mode === "fixture"} chain="sepolia" tx={r.txHash} /></td>
                 <td className="tnum py-2.5 pr-4 font-mono text-xs text-ink-2">{r.tsIso.slice(0, 19).replace("T", " ")}</td>
                 <td className="py-2.5 font-mono text-[11px] text-ink-3">{[...r.soc2, ...r.iso42001].join(" · ")}</td>
               </tr>

@@ -49,7 +49,7 @@ export default async function FleetPage() {
 
       <h1 className="max-w-[18ch] text-3xl font-semibold leading-[1.1] tracking-tight md:text-5xl">{headline(snap.agents)}</h1>
       <p className="mt-3 max-w-[58ch] text-ink-2">
-        Controls run every five minutes in a Chainlink CRE workflow. Each result is written to Sepolia with a hash of its evidence.
+        Control tests run in a Chainlink CRE workflow. Each result is written to Sepolia with a hash of its evidence.
       </p>
 
       <ul className="mt-10 divide-y divide-rule border-y border-rule">

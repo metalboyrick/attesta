@@ -27,7 +27,7 @@ Pages refresh their data every 15 s while the tab is visible.
 
 ## Data modes
 
-`DATA_MODE=fixture` serves deterministic demo data on the same 5-minute cadence as the CRE cron: the EVM agent stays clean, the Solana agent breaches its spend cap and gets frozen, the Cardano agent fails the allowlist control on the latest run. Hashes and tx links in fixture mode are synthetic and say so on screen.
+`DATA_MODE=fixture` serves deterministic demo data, with a new synthetic run every 5 minutes so the pages move: the EVM agent stays clean, the Solana agent breaches its spend cap and gets frozen, the Cardano agent fails the allowlist control on the latest run. Every page shows a fixture banner, tx hashes render as plain text tagged `synthetic` (never explorer links), and exports carry `data_mode: fixture` on every row.
 
 `DATA_MODE=live` (default when `NEXT_PUBLIC_REGISTRY_ADDRESS` is set) reads:
 
@@ -57,4 +57,4 @@ PY
 
 ## Env
 
-See `.env.example`. Agent registry ids default to `attesta-demo-agent-1..3` (EVM, Solana, Cardano); the CRE workflow currently writes `attesta-demo-agent-1`.
+See `.env.example`. Agent registry ids default to `attesta-demo-agent-1..3` (EVM, Solana, Cardano); `-1` EVM, `-2` Solana, `-3` Cardano.
