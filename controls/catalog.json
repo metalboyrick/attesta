@@ -38,7 +38,7 @@
       "implemented": true,
       "soc2_tsc": [
         "CC6.1",
-        "CC6.6",
+        "CC6.7",
         "CC7.2"
       ],
       "iso42001_annex_a": [
@@ -74,11 +74,11 @@
       "frequency": "planned: every 5 min cron",
       "implemented": false,
       "soc2_tsc": [
-        "CC5.2",
+        "CC5.1",
         "PI1.3"
       ],
       "iso42001_annex_a": [
-        "A.6.2.2",
+        "A.6.2.6",
         "A.9.4"
       ],
       "unverified": []
@@ -114,7 +114,7 @@
       ],
       "iso42001_annex_a": [
         "A.6.2.5",
-        "A.6.2.7"
+        "A.6.2.4"
       ],
       "unverified": []
     },

@@ -6,7 +6,7 @@ This folder holds the control catalog for Attesta. The machine-readable copy is 
 
 A control is one rule an AI agent must follow while it moves money. Each control has a test that a program can run with no human judgment. The same inputs always give the same pass or fail.
 
-Our Chainlink CRE workflow runs the tests for each agent. Its cron is set to every 5 minutes, but deploying a workflow to the CRE network is Early Access, so today it runs only when we start `cre workflow simulate` by hand. It writes the result and a hash of the evidence to the `AttestationRegistry` contract on Sepolia. If a control fails, the Solana guard program freezes the agent so it can't spend until a person looks at it.
+Our Chainlink CRE workflow runs the tests for each agent. Its cron is set to every 5 minutes, but deploying a workflow to the CRE network is Early Access, so today it runs only when we start `cre workflow simulate` by hand. It writes the result and a hash of the evidence to the `AttestationRegistry` contract on Sepolia. If a control fails, our relayer sees the result and freezes the agent in the Solana guard program. The guard program then rejects the agent's spends until a person unfreezes it.
 
 Each control in `catalog.json` has these fields:
 
@@ -26,11 +26,11 @@ Table 1 lists all eight controls. Three are coded and unit-tested in the workflo
 | ID | Title | SOC 2 TSC | ISO/IEC 42001 Annex A | Coded |
 |----|-------|-----------|-----------------------|-------------|
 | ATT-SPEND-01 | UTC-day spend within approved cap | CC7.2, PI1.3 | A.6.2.6, A.9.4 | Yes |
-| ATT-CPTY-02 | Counterparties limited to allowlist | CC6.1, CC6.6, CC7.2 | A.6.2.6, A.9.4 | Yes |
+| ATT-CPTY-02 | Counterparties limited to allowlist | CC6.1, CC6.7, CC7.2 | A.6.2.6, A.9.4 | Yes |
 | ATT-KEY-03 | Signing key and authority unchanged | CC6.1, CC6.2, CC6.3 | A.6.2.6 | Yes |
-| ATT-TXLIM-04 | Single transfer within per-transaction limit | CC5.2, PI1.3 | A.6.2.2, A.9.4 | No |
+| ATT-TXLIM-04 | Single transfer within per-transaction limit | CC5.1, PI1.3 | A.6.2.6, A.9.4 | No |
 | ATT-FRZ-05 | Freeze takes effect after a failed control | CC7.3, CC7.4 | A.6.2.6, A.9.2 | No |
-| ATT-CHG-06 | Model and prompt config matches approved release | CC8.1 | A.6.2.5, A.6.2.7 | No |
+| ATT-CHG-06 | Model and prompt config matches approved release | CC8.1 | A.6.2.5, A.6.2.4 | No |
 | ATT-LOG-07 | Attestation log complete and evidence intact | CC4.1, CC7.2 | A.6.2.8 | No |
 | ATT-HITL-08 | Human approval above threshold | CC5.1, CC6.3 | A.3.2, A.9.2 | No |
 
