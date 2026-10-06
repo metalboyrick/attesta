@@ -17,7 +17,10 @@ const registryAbi = parseAbi([
 ]);
 
 const id32 = (s: string) => keccak256(stringToHex(s));
-const errText = (e: unknown) => (e instanceof BaseError ? e.shortMessage : e instanceof Error ? e.message.split("\n")[0] : String(e));
+function errText(e: unknown): string {
+  const msg = e instanceof BaseError ? e.shortMessage : e instanceof Error ? e.message.split("\n")[0] : String(e);
+  return /\b429\b|too many requests/i.test(msg) ? "rate limited by the public RPC (429)" : msg;
+}
 const CHUNK = 9_000n;
 
 async function sepoliaResults(controls: ControlDef[]) {
@@ -109,7 +112,7 @@ async function solanaGuard() {
   const info = await conn.getAccountInfo(policy);
   const frozen = info ? info.data[FROZEN_OFFSET] === 1 : false;
 
-  const sigs = await conn.getSignaturesForAddress(policy, { limit: 25 });
+  const sigs = await conn.getSignaturesForAddress(policy, { limit: 15 });
   const ok = sigs.filter(s => !s.err).map(s => s.signature);
   // Confirmed txs never change, so each signature is fetched once. Sequential,
   // because public devnet RPC rate-limits batched getTransactions.
@@ -122,7 +125,12 @@ async function solanaGuard() {
   return { frozen, events, policy: policy.toBase58(), missing: !info };
 }
 
-const solanaTxEvents = new Map<string, TimelineEvent[]>();
+// On globalThis: Next bundles pages and route handlers separately, so plain module state is not shared.
+const g = globalThis as typeof globalThis & {
+  __attestaSolanaTx?: Map<string, TimelineEvent[]>;
+  __attestaCache?: Map<string, { at: number; value: unknown; pending?: Promise<unknown> }>;
+};
+const solanaTxEvents = (g.__attestaSolanaTx ??= new Map<string, TimelineEvent[]>());
 
 function frozenEvents(sig: string, logs: string[]): TimelineEvent[] {
   const events: TimelineEvent[] = [];
@@ -174,12 +182,12 @@ async function cardanoPurchases() {
  * Every viewer polls every 15 s, and public RPCs rate-limit. Each source is hit
  * at most once per TTL; on failure the last good value is served and flagged.
  */
-const TTL_MS = 20_000;
-const cache = new Map<string, { at: number; value: unknown; pending?: Promise<unknown> }>();
+const TTL_MS: Record<string, number> = { sepolia: 20_000, solana: 45_000, cardano: 30_000 };
+const cache = (g.__attestaCache ??= new Map());
 
 async function throttled<T>(key: string, fn: () => Promise<T>): Promise<{ value: T; staleSince?: number; error?: string }> {
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < TTL_MS) return { value: hit.value as T };
+  if (hit && Date.now() - hit.at < TTL_MS[key]) return { value: hit.value as T };
   try {
     const pending = (hit?.pending as Promise<T> | undefined) ?? fn();
     if (hit) hit.pending = pending;
@@ -196,7 +204,7 @@ async function throttled<T>(key: string, fn: () => Promise<T>): Promise<{ value:
 }
 
 const staleNote = (src: string, r: { staleSince?: number; error?: string }) =>
-  r.staleSince ? [`${src}: ${r.error}. Showing data from ${Math.round((Date.now() - r.staleSince) / 1000)} s ago.`] : [];
+  r.staleSince ? [`${src}: ${r.error}. Showing data read ${Math.round((Date.now() - r.staleSince) / 1000)} s ago.`] : [];
 
 export async function liveData(controls: ControlDef[]) {
   const errors: string[] = [];
