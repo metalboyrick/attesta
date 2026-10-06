@@ -55,8 +55,20 @@ export function agentKey(agentId: string): Hex {
     : keccak256(stringToHex(agentId));
 }
 
-// Control ids written as padded UTF-8 read back as text; hashes stay hex.
+// The CRE workflow (workflows/cre/control-eval) writes keccak256(label) as
+// the controlId, so known labels are matched back by hash.
+const knownControls = new Map(
+  (process.env.ATTESTA_CONTROL_IDS ?? "ATT-SPEND-01")
+    .split(",")
+    .map(label => label.trim())
+    .filter(Boolean)
+    .map(label => [keccak256(stringToHex(label)), label] as const),
+);
+
+// Known hashed ids and padded UTF-8 ids read back as text; others stay hex.
 function controlLabel(id: Hex): string {
+  const known = knownControls.get(id);
+  if (known) return known;
   const text = hexToString(id, { size: 32 }).replace(/\0+$/, "");
   return /^[\x20-\x7e]+$/.test(text) ? text : id;
 }
