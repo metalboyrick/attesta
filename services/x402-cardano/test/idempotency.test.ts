@@ -91,6 +91,7 @@ before(async () => {
       RECEIPTS_FILE: join(mkdtempSync(join(tmpdir(), "attesta-receipts-")), "receipts.json"),
       ATTESTA_CARDANO_SECRETS: "/nonexistent",
       ATTESTA_REGISTRY_ADDRESS: "",
+      ATTESTA_STUB: "1",
     },
     stdio: ["ignore", "ignore", "inherit"],
   });

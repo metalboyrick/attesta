@@ -36,7 +36,7 @@ The template pins 2.26.0 and Evolution 0.5.14. We bumped to the latest on npm as
 
 Run the halves separately with `npm run seller` and `npm run buyer -- <agentId>`.
 
-The buyer plays the counterparty agent. It pays for the check, then prints `DEAL` when `compliant` is true and `DECLINE` (with the failing controls) when it is not. Exit codes: 0 for DEAL, 2 for DECLINE, 1 for errors. With the stub source, any agentId containing `rogue` fails `SP-03-spend-limits`, so `npm run demo -- rogue-bot` shows the DECLINE path.
+The buyer plays the counterparty agent. It pays for the check, then prints `DEAL` when `compliant` is true and `DECLINE` (with the failing controls) when it is not. Exit codes: 0 for DEAL, 2 for DECLINE, 1 for errors. With `ATTESTA_STUB=1`, any agentId containing `rogue` fails `SP-03-spend-limits`, so `npm run demo -- rogue-bot` shows the DECLINE path.
 
 ### Local facilitator fallback
 
@@ -54,7 +54,7 @@ On Koios the facilitator cannot read confirmation depth, so it advertises `l1Con
 - **Chain provider.** The buyer needs chain reads to build its transaction. It uses Blockfrost when `BLOCKFROST_PROJECT_ID` is set, otherwise public Koios preprod (`https://preprod.koios.rest/api/v1`), which needs no signup.
 - **Price.** 1 tADA (`PRICE_LOVELACE=1000000`). Pure-lovelace payments must clear the ~1 ADA min-UTxO. The buyer caps spend at 2 tADA per payment.
 - **Response.** `{agentId, compliant, controls: [{id, pass, evidenceHash, ts}], source}`.
-- **Attestation source.** With `ATTESTA_REGISTRY_ADDRESS` and `SEPOLIA_RPC_URL` set, `src/attestation.ts` reads `contracts/evm/src/AttestationRegistry.sol` through viem: `isCompliant`, `getControls`, then `getResult` per control. `source` is then `sepolia:<address>`. Without them it returns stub data and `source` is `"stub"`. The agentId in the URL maps to the registry's `bytes32` key by keccak256 of the UTF-8 string (`AGENT_ID_ENCODING=utf8` switches to right-padded bytes); a raw `0x` 32-byte hex id passes through. This matches `id32` in `workflows/cre/control-eval/workflow.ts`. That workflow also hashes control ids, so the seller maps hashes back to labels listed in `ATTESTA_CONTROL_IDS` (default: every id in `controls/catalog.json`); ids stored as padded ASCII also read back as text, and anything else stays hex.
+- **Attestation source.** With `ATTESTA_REGISTRY_ADDRESS` and `SEPOLIA_RPC_URL` set, `src/attestation.ts` reads `contracts/evm/src/AttestationRegistry.sol` through viem: `isCompliant`, `getControls`, then `getResult` per control. `source` is then `sepolia:<address>`. Without them the seller fails closed: `/attest` answers 503 before quoting a price. Stub data (`source: "stub"`) is served only with `ATTESTA_STUB=1`. The agentId in the URL maps to the registry's `bytes32` key by keccak256 of the UTF-8 string (`AGENT_ID_ENCODING=utf8` switches to right-padded bytes); a raw `0x` 32-byte hex id passes through. This matches `id32` in `workflows/cre/control-eval/workflow.ts`. That workflow also hashes control ids, so the seller maps hashes back to labels listed in `ATTESTA_CONTROL_IDS` (default: every id in `controls/catalog.json`); ids stored as padded ASCII also read back as text, and anything else stays hex.
 - **Registry failure.** If the registry read throws, the seller answers 502 and x402 cancels settlement, so the buyer is not charged. The read path was tested on a local anvil node and then against the live Sepolia registry `0xbc675484a8c2c51174efb8b5369250eb8337750d` (see Proof on preprod).
 
 ## One payment per request, safe retries
@@ -75,6 +75,12 @@ The buyer generates a nonce per run and prints it. `BUYER_NONCE=<nonce> npm run 
 ## Pricing in tADA or tUSDM
 
 `PRICE_ASSET=usdm` prices one check at `PRICE_USDM` (default `1000000`, which is 1 tUSDM at 6 decimals) of `USDM_UNIT`. Default unit: `e675b46e4d2242c991a8932a99db3044e80515ae14b4c4ccf6b3f4c9.0014df10745553444d`, the preprod USDM built into `@x402/cardano` 2.28.0. It's also what the [tUSDM faucet](https://tusdm.moneta.global) sent us on 6 Oct. Masumi's TOKEN2049 guide uses a different preprod tUSDM, `16a55b2a349361ff88c03788f93e1e966e5d689605d044fef722ddde.0014df10745553444d`. The buyer's spend controls allow both, capped at 2 tUSDM. The token output also carries its min-UTxO in tADA (1.17663 tADA in our run), which the buyer pays and the seller receives. Unset `PRICE_ASSET` keeps 1 tADA. A tUSDM payment still needs tADA in the buyer wallet for the fee and the min-UTxO that travels with the token.
+
+## Hardening
+
+- **Fail closed.** No registry config and no `ATTESTA_STUB=1` means 503 on `/attest`, before any 402, so nobody pays for stub data by accident. `/health` reports the `source`.
+- **Malformed paths.** A bad percent-escape in the agentId (for example `/attest/%E0%A4%A`) gets 400. Async middleware errors go to an Express error handler. Unhandled rejections are logged. An uncaught exception logs and exits, so the container restart policy brings up a clean process.
+- `test/hardening.test.ts` covers these. The crash test failed before the fix: the seller process died on that request.
 
 ## Spend collector (monitored agent #3)
 

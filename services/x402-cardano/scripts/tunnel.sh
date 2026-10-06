@@ -5,7 +5,8 @@
 # Nothing is public until you run this. Ctrl-C stops the tunnel and container.
 #
 # Usage: SELLER_ADDRESS=addr_test1... scripts/tunnel.sh
-# Optional: ATTESTA_REGISTRY_ADDRESS, SEPOLIA_RPC_URL, FACILITATOR_URL,
+# Needs ATTESTA_REGISTRY_ADDRESS + SEPOLIA_RPC_URL (or ATTESTA_STUB=1 for test
+# data); without either the seller answers 503. Optional: FACILITATOR_URL,
 #           PORT (host port, default 4021), CLOUDFLARED (binary path).
 set -euo pipefail
 
@@ -20,7 +21,7 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 docker build -q -f "$HERE/Dockerfile" -t "$NAME" "$HERE/.." >/dev/null
 
 env_args=(-e "SELLER_ADDRESS=$SELLER_ADDRESS")
-for v in ATTESTA_REGISTRY_ADDRESS SEPOLIA_RPC_URL FACILITATOR_URL PRICE_LOVELACE; do
+for v in ATTESTA_REGISTRY_ADDRESS SEPOLIA_RPC_URL ATTESTA_STUB FACILITATOR_URL PRICE_LOVELACE; do
   [ -n "${!v:-}" ] && env_args+=(-e "$v=${!v}")
 done
 

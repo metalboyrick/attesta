@@ -11,9 +11,9 @@ import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactCardanoScheme } from "@x402/cardano/exact/server";
 import { NETWORK } from "./env.js";
-import { attestationFor, attestationSource } from "./attestation.js";
+import { attestationAvailable, attestationFor, attestationSource } from "./attestation.js";
 import { price, priceLabel } from "./pricing.js";
-import { registerReceiptHooks, replayMiddleware } from "./receipts.js";
+import { registerReceiptHooks, replayMiddleware, safeDecode } from "./receipts.js";
 
 const payTo = process.env.SELLER_ADDRESS;
 const facilitatorUrl =
@@ -39,6 +39,17 @@ const app = express();
 // Behind a TLS proxy (Caddy, Cloudflare tunnel) so the 402's resource URL
 // says https, not the proxy hop's http.
 if (process.env.TRUST_PROXY) app.set("trust proxy", true);
+
+// Reject what we can't serve before x402 quotes a price: a malformed path
+// escape, or no attestation source (fail closed, never sell stub data by
+// accident).
+app.use("/attest", (req, res, next) => {
+  if (safeDecode(req.path) === undefined) return res.status(400).json({ error: "malformed agentId" });
+  if (!attestationAvailable) {
+    return res.status(503).json({ error: "attestation source not configured" });
+  }
+  next();
+});
 
 // Retries with an already-paid ?nonce= are answered here, before x402 asks
 // for another payment.
@@ -76,8 +87,28 @@ app.get("/attest/:agentId", async (req, res) => {
 });
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true, network: NETWORK });
+  res.json({ ok: true, network: NETWORK, source: attestationSource });
 });
+
+// Last-resort error handler: log, answer with a status, never crash. A 4xx
+// or 5xx here also means x402 does not settle, so the buyer isn't charged.
+app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const status = (error as { status?: number; statusCode?: number }).status ?? (error as { statusCode?: number }).statusCode ?? 500;
+  if (status >= 500) console.error("[seller] request failed:", error);
+  if (!res.headersSent) res.status(status).json({ error: status >= 500 ? "internal error" : "bad request" });
+});
+
+process.on("unhandledRejection", reason => console.error("[seller] unhandled rejection:", reason));
+// State may be corrupt after an uncaught exception: log and exit so the
+// container's restart policy brings up a clean process.
+process.on("uncaughtException", error => {
+  console.error("[seller] uncaught exception:", error);
+  process.exit(1);
+});
+
+if (!attestationAvailable) {
+  console.warn("No ATTESTA_REGISTRY_ADDRESS/SEPOLIA_RPC_URL and ATTESTA_STUB!=1: /attest answers 503.");
+}
 
 const port = Number(process.env.SELLER_PORT ?? 4021);
 app.listen(port, () => {

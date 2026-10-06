@@ -1,8 +1,10 @@
 /**
  * Attestation lookup. Reads the Sepolia AttestationRegistry
  * (contracts/evm/src/AttestationRegistry.sol) when ATTESTA_REGISTRY_ADDRESS
- * and SEPOLIA_RPC_URL are set; otherwise returns stub data. `source` says
- * which one answered.
+ * and SEPOLIA_RPC_URL are set. Stub data is served only with ATTESTA_STUB=1;
+ * with neither, the seller fails closed (attestationAvailable is false and
+ * the paid route answers 503 before quoting a price). `source` says which
+ * one answered.
  */
 import { createHash } from "node:crypto";
 import {
@@ -112,8 +114,19 @@ function fromStub(agentId: string): Attestation {
   return { agentId, compliant: controls.every(c => c.pass), controls, source: "stub" };
 }
 
+const stubEnabled = process.env.ATTESTA_STUB === "1";
+
+/** False when there is no registry and stub data wasn't explicitly enabled. */
+export const attestationAvailable = registry !== undefined || stubEnabled;
+
 export async function attestationFor(agentId: string): Promise<Attestation> {
-  return registry ? fromRegistry(agentId) : fromStub(agentId);
+  if (registry) return fromRegistry(agentId);
+  if (stubEnabled) return fromStub(agentId);
+  throw new Error("attestation source not configured");
 }
 
-export const attestationSource = registry ? `sepolia:${registry.address}` : "stub";
+export const attestationSource = registry
+  ? `sepolia:${registry.address}`
+  : stubEnabled
+    ? "stub"
+    : "unconfigured";

@@ -43,6 +43,15 @@ const file = process.env.RECEIPTS_FILE ?? ".data/receipts.json";
 
 const key = (agentId: string, nonce: string) => `${agentId}\n${nonce}`;
 
+/** decodeURIComponent that returns undefined on a malformed escape. */
+export function safeDecode(segment: string): string | undefined {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return undefined;
+  }
+}
+
 function load(): State {
   try {
     return JSON.parse(readFileSync(file, "utf8")) as State;
@@ -79,7 +88,8 @@ function requestKey(transportContext: unknown): { agentId: string; nonce: string
   const match = /^\/attest\/([^/]+)$/.exec(req.adapter.getPath());
   const nonce = req.adapter.getQueryParam?.("nonce");
   if (!match || typeof nonce !== "string" || !NONCE.test(nonce)) return undefined;
-  return { agentId: decodeURIComponent(match[1]), nonce };
+  const agentId = safeDecode(match[1]);
+  return agentId === undefined ? undefined : { agentId, nonce };
 }
 
 function txHashOf(payload: Record<string, unknown>): string | undefined {
@@ -117,21 +127,28 @@ function replay(res: Parameters<RequestHandler>[1], r: Receipt) {
  * settled nonces from the store and holds back retries while a payment settles.
  */
 export const replayMiddleware: RequestHandler = async (req, res, next) => {
-  const match = /^\/attest\/([^/]+)$/.exec(req.path);
-  const nonce = req.query.nonce;
-  if (req.method !== "GET" || !match || nonce === undefined) return next();
-  if (typeof nonce !== "string" || !NONCE.test(nonce)) {
-    return res.status(400).json({ error: "nonce must be 8-128 chars of [A-Za-z0-9_-]" });
+  try {
+    const match = /^\/attest\/([^/]+)$/.exec(req.path);
+    const nonce = req.query.nonce;
+    if (req.method !== "GET" || !match || nonce === undefined) return next();
+    if (typeof nonce !== "string" || !NONCE.test(nonce)) {
+      return res.status(400).json({ error: "nonce must be 8-128 chars of [A-Za-z0-9_-]" });
+    }
+    const agentId = safeDecode(match[1]);
+    if (agentId === undefined) return res.status(400).json({ error: "malformed agentId" });
+    const r = state.receipts[key(agentId, nonce)];
+    if (!r) return next();
+    if (r.status === "pending" && (await onChain(r.txHash))) {
+      put({ ...r, status: "settled", updatedAt: Date.now() });
+    }
+    const current = state.receipts[key(r.agentId, r.nonce)];
+    if (current?.status === "settled") return replay(res, current);
+    res.setHeader("Retry-After", "15");
+    return res.status(409).json({ error: "settlement_in_progress", txHash: r.txHash });
+  } catch (error) {
+    // Express 4 does not catch rejected promises from async middleware.
+    next(error);
   }
-  const r = state.receipts[key(decodeURIComponent(match[1]), nonce)];
-  if (!r) return next();
-  if (r.status === "pending" && (await onChain(r.txHash))) {
-    put({ ...r, status: "settled", updatedAt: Date.now() });
-  }
-  const current = state.receipts[key(r.agentId, r.nonce)];
-  if (current?.status === "settled") return replay(res, current);
-  res.setHeader("Retry-After", "15");
-  return res.status(409).json({ error: "settlement_in_progress", txHash: r.txHash });
 };
 
 export function registerReceiptHooks(server: x402ResourceServer) {
