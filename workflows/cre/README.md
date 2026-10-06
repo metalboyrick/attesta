@@ -8,12 +8,29 @@ We only run it with `cre workflow simulate --broadcast`. Deploying to the CRE ne
 
 | Item | Value |
 |---|---|
-| AttestationRegistry (Sepolia) | _pending: deployer not funded yet_ |
-| AgentWallet, EVM demo agent (Sepolia) | _pending_ |
+| AttestationRegistry (Sepolia) | [`0xbc675484a8c2c51174efb8b5369250eb8337750d`](https://sepolia.etherscan.io/address/0xbc675484a8c2c51174efb8b5369250eb8337750d), deploy block 11857314 |
+| AgentWallet, EVM demo agent-1 (Sepolia) | [`0xdd181c02a2979d13f4124dcd628cfe96c3248f2f`](https://sepolia.etherscan.io/address/0xdd181c02a2979d13f4124dcd628cfe96c3248f2f) |
 | Forwarder accepted by contract | `0x15fC6ae953E024d975e77382eEeC56A9101f9F88` (Sepolia MockKeystoneForwarder, per CRE forwarder directory) |
-| Broadcast tx | _pending_ |
-| Etherscan | _pending_ |
+| First broadcast run | 2026-10-06 17:30 UTC, `simulate.sh --broadcast`, CRE CLI v1.37.0 |
 | Solana agent | live devnet RPC. Program `2ppMVjwBs8dqNppcJctfTJaVb3rtfFFe5cDmJyxCGuSW` is not deployed yet, so the workflow skips agent-2 (no report) until it is |
+
+## First broadcast run (6 Oct 2026, 17:30 UTC)
+
+Each tx goes to the MockKeystoneForwarder, which calls `AttestationRegistry.onReport`. Every one emitted `ControlResult` from the registry (checked from receipts, not only the simulator log). After the run `isCompliant` is true for agent-1 and agent-3. Agent-2 was skipped: the Solana guard program is not on devnet yet.
+
+**Table A. Broadcast txs**
+
+| Agent | Control | Result | Tx |
+|---|---|---|---|
+| attesta-demo-agent-1 | ATT-SPEND-01 | PASS | [0xd0fdfbd1...](https://sepolia.etherscan.io/tx/0xd0fdfbd143dcfab42b8e0e5a84543d39f3973dd611437fda58c8e351f3fdafca) |
+| attesta-demo-agent-1 | ATT-CPTY-02 | PASS | [0xa9b281eb...](https://sepolia.etherscan.io/tx/0xa9b281ebed3b8d286caf80581e9ce7d31374e2e19597cbc3e0878d6782966951) |
+| attesta-demo-agent-1 | ATT-KEY-03 | PASS | [0xfd8fea00...](https://sepolia.etherscan.io/tx/0xfd8fea00ed94b083a878f21c465da66c8443a8af326857f98638b2980e2d2c2f) |
+| attesta-demo-agent-3 | ATT-SPEND-01 | PASS | [0x95a3fbb7...](https://sepolia.etherscan.io/tx/0x95a3fbb7152dd9dc464341e10f828a3f3ee46abb430a93cf35c177c92fd4c188) |
+| attesta-demo-agent-3 | ATT-CPTY-02 | PASS | [0x5e52ffbb...](https://sepolia.etherscan.io/tx/0x5e52ffbb1a5498182ceb6efb2e2a6482357e3c70d0247947e9155c9abf952709) |
+
+Evidence behind the hashes: agent-1 paid the allowlisted vendor 0.001 ETH in [0xdf8cbb9b...](https://sepolia.etherscan.io/tx/0xdf8cbb9b0710896c5cfafa76ed0b3986a4ac7619b3813db6d96b6a67cfb1c878); agent-3 had 1 payment to the x402 seller on Cardano preprod (from Koios).
+
+Cost: about 0.004 Sepolia ETH per run of 5 writes. A first write to a new (agent, control) slot uses about 705k gas on Sepolia today, so `gasLimit` is 1,500,000.
 
 ## Agents
 
@@ -159,4 +176,5 @@ Fixture mode (`solana.mode: "fixture"`) exists for tests only. Fixture results a
 - `test/MockForwarderFork.t.sol` calls the live Sepolia mock forwarder on a fork, so the forwarder path is tested before we spend gas.
 - An agent with no payments today passes ATT-SPEND-01 and ATT-CPTY-02. That is on purpose: zero spend breaks neither rule. The evidence JSON shows `paymentsSeen: 0` and `spentToday: "0"`, so a reader can tell an idle agent from a busy compliant one. An agent we can't read at all gets no result and stays non-compliant.
 - The `local-simulation` target follows the chainlink-cre-skill pattern with one difference: it still creates an `EVMClient`, because the EVM agent's evidence is an on-chain read. It never builds a report or calls `writeReport`. Production configs must set `mode: "production"` and a nonzero `registryAddress`, or the run fails.
+- Sepolia charged about 5x what forge's local EVM estimates for contract creation on 6 Oct 2026 (node `eth_estimateGas` 4.7M for the registry). Two deploy attempts ran out of gas before `deploy-registry.sh` got `--gas-estimate-multiplier 700`.
 - To refresh the Solana fixture: `bun test/fixture.ts` prints new `policyB64`, `txs` and the base58 keys used.
