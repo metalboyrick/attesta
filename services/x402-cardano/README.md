@@ -29,7 +29,7 @@ The template pins 2.26.0 and Evolution 0.5.14. We bumped to the latest on npm as
 ## Run it
 
 1. `npm install`
-2. `cp .env.example .env`. It holds no secrets, and it points the seller at the live Sepolia registry `0xbc675484a8c2c51174efb8b5369250eb8337750d`, so answers come from real control results.
+2. `cp .env.example .env`. It holds no secrets, and it points the seller at the live Sepolia registry `0x48a80a9d7e319c29e5e309d7932c467810680935` (v2), so answers come from real control results.
 3. `npm run wallet` writes a fresh buyer and seller wallet to `~/.attesta-secrets/cardano-preprod.env` (chmod 600) and prints only the addresses. It refuses to overwrite an existing file.
 4. Fund the buyer address with tADA at the [Cardano testnet faucet](https://docs.cardano.org/cardano-testnets/tools/faucet/) (network: Preprod). The faucet needs a captcha, so a human does this step.
 5. `npm run demo -- attesta-demo-agent-3` starts the seller, runs the buyer once, and prints the receipt, the explorer link, and a `DEAL` or `DECLINE` line. Agent ids: `attesta-demo-agent-1` (EVM), `-2` (Solana), `-3` (Cardano). The answer is whatever the registry holds at that moment.
@@ -104,7 +104,7 @@ docker run --rm -p 127.0.0.1:4021:4021 -e SELLER_ADDRESS=addr_test1... attesta-x
 
 ## Proof on preprod
 
-All payments ran on 6 Oct 2026 through the hosted Cardano Foundation facilitator, signed by the Evolution SDK buyer. Each was confirmed with 1 block (`"status": "confirmed"` in the receipt) and checked on chain through Koios. Rows 1 to 3 used the stub attestation source. Rows 4 and 5 read the live Sepolia `AttestationRegistry`.
+All payments ran on 6 Oct 2026 through the hosted Cardano Foundation facilitator, signed by the Evolution SDK buyer. Each was confirmed with 1 block (`"status": "confirmed"` in the receipt) and checked on chain through Koios. Rows 1 to 3 used the stub attestation source. Rows 4 and 5 read the live Sepolia `AttestationRegistry` v1 (`0xbc67…750d`). The current registry is v2, `0x48a80a9d7e319c29e5e309d7932c467810680935`. It has the same ABI and accepts only the 8 catalog control ids and writes sent from our reporter key.
 
 | What | Tx | Paid to seller |
 | --- | --- | --- |
