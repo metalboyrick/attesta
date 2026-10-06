@@ -32,6 +32,25 @@ Evidence behind the hashes: agent-1 paid the allowlisted vendor 0.001 ETH in [0x
 
 Cost: about 0.004 Sepolia ETH per run of 5 writes. A first write to a new (agent, control) slot uses about 705k gas on Sepolia today, so `gasLimit` is 1,500,000.
 
+## Failure flow, end to end (6 Oct 2026, 17:35 to 17:37 UTC)
+
+Agent-2 pays someone off its allowlist on Solana. CRE writes ATT-CPTY-02 FAIL to Sepolia. The relayer freezes the agent on Solana. The next spend is rejected on-chain.
+
+**Table B. Agent-2 failure flow**
+
+| Step | Chain | What happened | Tx |
+|---|---|---|---|
+| 1 | Solana devnet | Agent-2 spends 0.002 SOL to `Eg2z7iSr...` (not allowlisted). Spend succeeds, `SpendEvent.allowlisted = false` | [3fJ3Azi6...](https://explorer.solana.com/tx/3fJ3Azi6FwyMeq3mr4L51C3CpESgMise5tvAr8Nj2kY3LT8516V5kcd9tbkD8AUmaEX5PRUkkqr33ehSAEymbcKr?cluster=devnet) |
+| 1b | Solana devnet | A second off-allowlist spend to the same payee, made about 10 s later by another script run. CRE cites this one in its evidence | [3eK9tjdr...](https://explorer.solana.com/tx/3eK9tjdrgRbU1PjVS8E15k3LmmtsJywFTB8HWCmPvZLQuBhv8UceLkmq1arVn7AwyXQHMPNJ1ewwec4qD3M9gGQe?cluster=devnet) |
+| 2 | Sepolia | CRE `simulate --broadcast` writes **ATT-CPTY-02 FAIL** for agent-2 (evidenceHash `0x97496a9d...`). `isCompliant(agent-2)` turns false | [0x462eb21b...](https://sepolia.etherscan.io/tx/0x462eb21b0bb352dfadd5cdf1fefeca8ab62b7f49c30e48da645fcf63d83b6e20) |
+| 2b | Sepolia | Same run: ATT-SPEND-01 PASS, ATT-KEY-03 PASS | [0x7068b8c1...](https://sepolia.etherscan.io/tx/0x7068b8c1bb50faf83dbdde25b5e0f9c2da26c7541c9a6df216ae810f480ed1af), [0xaf118ed4...](https://sepolia.etherscan.io/tx/0xaf118ed4e375339a44ff06ddb247996ba32073e338610795baa972b53dd37d70) |
+| 3 | Solana devnet | Relayer sees the FAIL and calls `set_frozen(true)`. Memo links the Sepolia tx | [2P8GkxMn...](https://explorer.solana.com/tx/2P8GkxMnBBfcRd7htXypUBPBPzAikT96R3xnyrGgwfUbihhamPSG52vw1hVZuuitC7myVJK2yRShWhirh7MQSCUB?cluster=devnet) |
+| 4 | Solana devnet | Agent-2 tries to pay the allowlisted payee. Rejected with `AgentFrozen` (custom error 6000) | [39or4JG4...](https://explorer.solana.com/tx/39or4JG4js1iUkPMexRomWEPt9dyjGSS6K3gqCd1F3Mzs2FnyAzaEqjoJpfVLNx2xLDhDJ2Fhfo9Qu2RtTyFrCgZ?cluster=devnet) |
+
+From the Sepolia FAIL (17:36:24 UTC log) to the freeze on Solana (block time 17:36:08 UTC by the devnet clock) took under a minute. Clocks differ between the simulator host and the Solana cluster, so read that as "within a minute", not a precise latency.
+
+Run it again: `cd programs/solana && pnpm spend -- unknown 2000000`, then `workflows/cre/scripts/simulate.sh --config ./config.agent-2.json --broadcast` (3 writes, about 0.002 Sepolia ETH).
+
 ## Agents
 
 Canonical ids, shared by every service. `agentId` on-chain is `keccak256(utf8 id)`.
