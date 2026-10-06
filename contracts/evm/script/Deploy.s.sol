@@ -16,7 +16,17 @@ contract Deploy is Script {
         address signer = vm.envOr("AGENT_SIGNER", address(0));
 
         vm.startBroadcast();
+        // Deployer EOA becomes owner and reporter (tx.origin of `cre workflow simulate --broadcast`).
         reg = new AttestationRegistry(forwarder);
+        // controls/catalog.json ids; anything else is rejected
+        reg.setAllowedControl(keccak256("ATT-SPEND-01"), true);
+        reg.setAllowedControl(keccak256("ATT-CPTY-02"), true);
+        reg.setAllowedControl(keccak256("ATT-KEY-03"), true);
+        reg.setAllowedControl(keccak256("ATT-TXLIM-04"), true);
+        reg.setAllowedControl(keccak256("ATT-FRZ-05"), true);
+        reg.setAllowedControl(keccak256("ATT-CHG-06"), true);
+        reg.setAllowedControl(keccak256("ATT-LOG-07"), true);
+        reg.setAllowedControl(keccak256("ATT-HITL-08"), true);
         if (signer != address(0)) {
             wallet = new AgentWallet(signer, vm.envOr("DAILY_CAP", uint256(0.01 ether)));
             address vendor = vm.envOr("VENDOR", address(0));

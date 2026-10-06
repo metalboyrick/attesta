@@ -20,7 +20,10 @@ contract MockForwarderForkTest is Test {
         }
         vm.createSelectFork(rpc);
 
+        address reporter = address(0xC0FFEE);
         AttestationRegistry reg = new AttestationRegistry(MOCK_FORWARDER);
+        reg.setReporter(reporter);
+        reg.setAllowedControl(keccak256("ATT-SPEND-01"), true);
         bytes32 agent = keccak256("attesta-demo-agent-1");
         bytes32 ctrl = keccak256("ATT-SPEND-01");
         bytes memory payload = abi.encode(ctrl, agent, true, keccak256("ev"), uint64(block.timestamp));
@@ -39,6 +42,12 @@ contract MockForwarderForkTest is Test {
         );
         assertEq(header.length, 109);
 
+        // The mock forwarder is permissionless: anyone can call report(). Only tx.origin == reporter gets through.
+        vm.prank(address(0xBAD), address(0xBAD));
+        IMockKeystoneForwarder(MOCK_FORWARDER).report(address(reg), bytes.concat(header, payload), "", new bytes[](0));
+        assertFalse(reg.isCompliant(agent));
+
+        vm.prank(reporter, reporter);
         IMockKeystoneForwarder(MOCK_FORWARDER).report(address(reg), bytes.concat(header, payload), "", new bytes[](0));
 
         assertTrue(reg.isCompliant(agent));
