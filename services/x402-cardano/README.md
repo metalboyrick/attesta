@@ -59,7 +59,7 @@ On Koios the facilitator cannot read confirmation depth, so it advertises `l1Con
 
 ## Spend collector (monitored agent #3)
 
-`npm run collect -- <agentId> <address> [sinceUnixSeconds]` reads a preprod wallet's transactions from Koios and prints `SpendRecord[]` (type in `services/shared/spend-record.ts`, shared with the EVM and Solana collectors). A transaction counts when one of its inputs is from the agent address. Each output to another address becomes one record per asset; change and fees are skipped. Defaults: `AGENT_ID` (else `attesta-demo-agent-3`) and `AGENT_ADDRESS` (else the buyer wallet).
+`npm run collect -- <agentId> <address> [sinceUnixSeconds]` reads a preprod wallet's transactions from Koios and prints `SpendRecord[]` (type in `services/shared/spend-record.ts`, shared with the EVM and Solana collectors). A transaction counts when one of its inputs carries the agent's payment credential. Each output to another credential becomes one record per asset; change (same payment credential, any stake part) and fees are skipped. Same rule as the CRE agent-3 evaluator. Defaults: `AGENT_ID` (else `attesta-demo-agent-3`) and `AGENT_ADDRESS` (else the buyer wallet).
 
 ## Docker
 

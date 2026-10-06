@@ -3,10 +3,11 @@
  * transactions from Koios and emits normalized SpendRecords
  * (services/shared/spend-record.ts).
  *
- * A transaction counts as spend when one of its inputs comes from the agent
- * address. Every output to another address becomes one record per asset;
- * outputs back to the agent address are change and are skipped. Fees are not
- * recorded.
+ * A transaction counts as spend when one of its inputs carries the agent's
+ * payment credential. Every output to another credential becomes one record
+ * per asset; outputs back to the agent's credential are change (whatever the
+ * stake part) and are skipped. Fees are not recorded. This matches the
+ * agent-3 evaluator in workflows/cre/control-eval.
  *
  * Usage: npm run collect -- [agentId] [address] [sinceUnixSeconds]
  * Defaults: AGENT_ID / AGENT_ADDRESS env, else the buyer wallet.
@@ -16,7 +17,7 @@ import type { SpendRecord } from "../../shared/spend-record.js";
 import "./env.js";
 
 type KoiosAsset = { policy_id: string; asset_name: string | null; quantity: string };
-type KoiosTxOut = { payment_addr: { bech32: string }; value: string; asset_list?: KoiosAsset[] };
+type KoiosTxOut = { payment_addr: { bech32: string; cred: string }; value: string; asset_list?: KoiosAsset[] };
 type KoiosTx = { tx_hash: string; tx_timestamp: number; inputs: KoiosTxOut[]; outputs: KoiosTxOut[] };
 
 const KOIOS = process.env.KOIOS_BASE_URL ?? "https://preprod.koios.rest/api/v1";
@@ -44,6 +45,7 @@ export async function collectCardanoSpends(
   if (txs.length === 0) return [];
 
   const records: SpendRecord[] = [];
+  let agentCred: string | undefined;
   // tx_info accepts up to 50 hashes per call on the public tier.
   for (let i = 0; i < txs.length; i += 50) {
     const batch = txs.slice(i, i + 50).map(t => t.tx_hash);
@@ -53,10 +55,12 @@ export async function collectCardanoSpends(
       _assets: true,
     });
     for (const tx of infos) {
-      if (!tx.inputs.some(input => input.payment_addr.bech32 === address)) continue;
+      agentCred ??= [...tx.inputs, ...tx.outputs].find(o => o.payment_addr.bech32 === address)
+        ?.payment_addr.cred;
+      if (!agentCred || !tx.inputs.some(input => input.payment_addr.cred === agentCred)) continue;
       for (const out of tx.outputs) {
         const to = out.payment_addr.bech32;
-        if (to === address) continue;
+        if (out.payment_addr.cred === agentCred) continue;
         const base = { agentId, chain: CHAIN, txHash: tx.tx_hash, to, ts: tx.tx_timestamp };
         records.push({ ...base, amount: out.value, asset: "lovelace" });
         for (const a of out.asset_list ?? []) {
