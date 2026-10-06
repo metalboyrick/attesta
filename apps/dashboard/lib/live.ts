@@ -1,7 +1,8 @@
 import "server-only";
+import { registryAddress } from "./env";
 import { createHash } from "node:crypto";
 import { Connection, PublicKey } from "@solana/web3.js";
-import { createPublicClient, http, isAddress, keccak256, parseAbiItem, stringToHex, type Address, type Hex } from "viem";
+import { BaseError, createPublicClient, http, isAddress, keccak256, parseAbi, parseAbiItem, stringToHex, type Address, type Hex, type PublicClient } from "viem";
 import { sepolia } from "viem/chains";
 import { AGENTS } from "./agents";
 import type { ControlDef, ControlResult, TimelineEvent } from "./types";
@@ -10,12 +11,18 @@ const controlResultEvent = parseAbiItem(
   "event ControlResult(bytes32 indexed controlId, bytes32 indexed agentId, bool pass, bytes32 evidenceHash, uint64 ts)",
 );
 
+const registryAbi = parseAbi([
+  "function getControls(bytes32 agentId) view returns (bytes32[])",
+  "function getResult(bytes32 agentId, bytes32 controlId) view returns ((bool pass, bytes32 evidenceHash, uint64 ts))",
+]);
+
 const id32 = (s: string) => keccak256(stringToHex(s));
+const errText = (e: unknown) => (e instanceof BaseError ? e.shortMessage : e instanceof Error ? e.message.split("\n")[0] : String(e));
 const CHUNK = 9_000n;
 
 async function sepoliaResults(controls: ControlDef[]) {
-  const address = process.env.NEXT_PUBLIC_REGISTRY_ADDRESS;
-  if (!address || !isAddress(address)) throw new Error("NEXT_PUBLIC_REGISTRY_ADDRESS is not set");
+  const address = registryAddress();
+  if (!address || !isAddress(address)) throw new Error("REGISTRY_ADDRESS (or NEXT_PUBLIC_REGISTRY_ADDRESS) is not set");
   const client = createPublicClient({
     chain: sepolia,
     transport: http(process.env.SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com"),
@@ -26,10 +33,48 @@ async function sepoliaResults(controls: ControlDef[]) {
   const agentByHash = new Map(AGENTS.map(a => [id32(a.registryId), a.slug]));
   const controlByHash = new Map(controls.map(c => [id32(c.id), c.id]));
 
+  try {
+    return { results: await logResults(client, address as Address, from, latest, agentByHash, controlByHash), address, fromState: false };
+  } catch (e) {
+    // Some public RPCs prune old logs. Contract state still has the latest result per control, without tx hashes.
+    const results = await stateResults(client, address as Address, controlByHash);
+    return { results, address, fromState: true, logError: errText(e) };
+  }
+}
+
+async function stateResults(client: PublicClient, address: Address, controlByHash: Map<Hex, string>) {
+  const results: ControlResult[] = [];
+  for (const agent of AGENTS) {
+    const key = id32(agent.registryId);
+    const ids = await client.readContract({ address, abi: registryAbi, functionName: "getControls", args: [key] });
+    const rows = await Promise.all(ids.map(id => client.readContract({ address, abi: registryAbi, functionName: "getResult", args: [key, id] })));
+    ids.forEach((id, i) =>
+      results.push({
+        controlId: controlByHash.get(id) ?? id,
+        agentSlug: agent.slug,
+        pass: rows[i].pass,
+        evidenceHash: rows[i].evidenceHash,
+        ts: Number(rows[i].ts),
+        txHash: "",
+        chain: "sepolia",
+      }),
+    );
+  }
+  return results;
+}
+
+async function logResults(
+  client: PublicClient,
+  address: Address,
+  from: bigint,
+  latest: bigint,
+  agentByHash: Map<Hex, string>,
+  controlByHash: Map<Hex, string>,
+) {
   const results: ControlResult[] = [];
   for (let start = from; start <= latest; start += CHUNK) {
     const end = start + CHUNK - 1n > latest ? latest : start + CHUNK - 1n;
-    const logs = await client.getLogs({ address: address as Address, event: controlResultEvent, fromBlock: start, toBlock: end });
+    const logs = await client.getLogs({ address, event: controlResultEvent, fromBlock: start, toBlock: end });
     for (const log of logs) {
       const { controlId, agentId, pass, evidenceHash, ts } = log.args;
       const agentSlug = agentByHash.get(agentId as Hex);
@@ -45,7 +90,7 @@ async function sepoliaResults(controls: ControlDef[]) {
       });
     }
   }
-  return { results, address };
+  return results;
 }
 
 // Anchor event = "Program data: " + base64(sha256("event:<Name>")[..8] ++ borsh fields)
@@ -88,12 +133,14 @@ async function solanaGuard() {
       });
     }
   });
-  return { frozen, events, policy: policy.toBase58() };
+  return { frozen, events, policy: policy.toBase58(), missing: !info };
 }
 
 async function cardanoPurchases() {
-  const addr = process.env.CARDANO_SELLER_ADDRESS;
-  if (!addr) throw new Error("CARDANO_SELLER_ADDRESS is not set");
+  // Default: the x402 seller address in services/x402-cardano/README.md
+  const addr =
+    process.env.CARDANO_SELLER_ADDRESS ||
+    "addr_test1qztvnhavscfaupuwy824jem5z8dxavkzz6ukg4xyzls3gn2mejfgg4sl7sj4rdxxdnzsqvpkzwu0v39338t9aj6p6q7stjznf6";
   const base = process.env.KOIOS_URL || "https://preprod.koios.rest/api/v1";
   const res = await fetch(`${base}/address_txs`, {
     method: "POST",
@@ -119,8 +166,11 @@ export async function liveData(controls: ControlDef[]) {
   const [evm, sol, ada] = await Promise.allSettled([sepoliaResults(controls), solanaGuard(), cardanoPurchases()]);
 
   const results = evm.status === "fulfilled" ? evm.value.results : [];
-  if (evm.status === "fulfilled") notes.push(`Registry ${evm.value.address} on Sepolia`);
-  else errors.push(`Sepolia: ${(evm.reason as Error).message}`);
+  if (evm.status === "fulfilled") {
+    notes.push(`Registry ${evm.value.address} on Sepolia`);
+    if (evm.value.fromState)
+      errors.push(`Sepolia logs unavailable (${evm.value.logError}). Showing latest results from contract state, without tx links or history.`);
+  } else errors.push(`Sepolia: ${errText(evm.reason)}`);
 
   const frozen: Record<string, boolean> = {};
   const events: TimelineEvent[] = results.map(r => ({
@@ -136,10 +186,11 @@ export async function liveData(controls: ControlDef[]) {
     frozen.solana = sol.value.frozen;
     events.push(...sol.value.events);
     notes.push(`Guard policy ${sol.value.policy} on Solana devnet`);
-  } else errors.push(`Solana: ${(sol.reason as Error).message}`);
+    if (sol.value.missing) errors.push(`Solana: policy account ${sol.value.policy} not found on devnet. Is the guard deployed and the agent registered?`);
+  } else errors.push(`Solana: ${errText(sol.reason)}`);
 
   if (ada.status === "fulfilled") events.push(...ada.value);
-  else errors.push(`Cardano: ${(ada.reason as Error).message}`);
+  else errors.push(`Cardano: ${errText(ada.reason)}`);
 
   return { results, events, frozen, errors, notes };
 }

@@ -1,4 +1,5 @@
 import "server-only";
+import { registryAddress } from "./env";
 import { AGENTS } from "./agents";
 import { loadCatalog } from "./catalog";
 import { fixtureData } from "./fixture";
@@ -8,7 +9,7 @@ import type { AgentView, ControlResult, Snapshot } from "./types";
 export function dataMode(): "fixture" | "live" {
   const m = process.env.DATA_MODE;
   if (m === "fixture" || m === "live") return m;
-  return process.env.NEXT_PUBLIC_REGISTRY_ADDRESS ? "live" : "fixture";
+  return registryAddress() ? "live" : "fixture";
 }
 
 function buildAgents(results: ControlResult[], frozen: Record<string, boolean>): AgentView[] {

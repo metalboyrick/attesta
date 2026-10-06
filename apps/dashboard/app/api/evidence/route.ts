@@ -1,3 +1,4 @@
+import { registryAddress } from "@/lib/env";
 import { evidenceRows, toCsv } from "@/lib/evidence";
 import { getSnapshot } from "@/lib/snapshot";
 
@@ -23,7 +24,7 @@ export async function GET(req: Request) {
   const pack = {
     generatedAt: new Date(snap.generatedAt * 1000).toISOString(),
     dataMode: snap.mode,
-    registry: { chain: "sepolia", address: process.env.NEXT_PUBLIC_REGISTRY_ADDRESS || null },
+    registry: { chain: "sepolia", address: registryAddress() ?? null },
     catalogSource: snap.catalogSource,
     notes: snap.notes,
     errors: snap.errors,

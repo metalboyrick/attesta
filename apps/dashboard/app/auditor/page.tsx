@@ -1,3 +1,4 @@
+import { registryAddress } from "@/lib/env";
 import { DownloadSimple } from "@phosphor-icons/react/ssr";
 import Link from "next/link";
 import { TxLink, short } from "@/components/chain";
@@ -39,7 +40,7 @@ export default async function AuditorPage({ searchParams }: { searchParams: Prom
     return str ? `?${str}` : "";
   };
   const apiQs = (format: string) => `/api/evidence?format=${format}&scope=${scope}${agent ? `&agent=${agent}` : ""}`;
-  const registry = process.env.NEXT_PUBLIC_REGISTRY_ADDRESS || "<registry>";
+  const registry = registryAddress() || "<registry>";
 
   return (
     <>

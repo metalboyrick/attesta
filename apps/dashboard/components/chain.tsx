@@ -5,6 +5,7 @@ import type { Chain } from "@/lib/types";
 export const short = (s: string, head = 6, tail = 4) => (s.length <= head + tail + 1 ? s : `${s.slice(0, head)}…${s.slice(-tail)}`);
 
 export function TxLink({ chain, tx, label, synthetic }: { chain: Chain; tx: string; label?: string; synthetic?: boolean }) {
+  if (!tx) return <span title="Read from contract state; tx hash not available" className="text-xs text-ink-3">–</span>;
   // Fixture hashes never render as explorer links, so they cannot pass as real transactions.
   if (synthetic) {
     return (
