@@ -1,22 +1,23 @@
 # CRE control-eval workflow
 
-A Chainlink CRE cron workflow. Every 5 minutes it collects evidence for each agent, runs three controls, and writes one `ControlResult` report per (agent, control) to `AttestationRegistry` on Ethereum Sepolia.
+A Chainlink CRE workflow with a cron trigger. Each run collects evidence for every agent, runs three controls, and writes one `ControlResult` report per (agent, control) to `AttestationRegistry` on Ethereum Sepolia.
 
-We only run it with `cre workflow simulate --broadcast`. Deploying to the CRE network is Early Access gated. With `--broadcast` the simulator sends real Sepolia txs to the MockKeystoneForwarder, which calls our contract's `onReport`.
+**How it runs today.** Every run is a manual `cre workflow simulate --broadcast`. The simulator fires the cron trigger once, runs the workflow on our machine, and sends real Sepolia txs through Chainlink's MockKeystoneForwarder, which calls our contract's `onReport`. The 5 minute cron schedule only takes effect once the workflow is deployed to the CRE network. Deployment is Early Access and we don't have it. Chainlink confirmed in the hackathon chat that simulation is enough for the submission.
 
 ## Status
 
 | Item | Value |
 |---|---|
-| AttestationRegistry (Sepolia) | [`0xbc675484a8c2c51174efb8b5369250eb8337750d`](https://sepolia.etherscan.io/address/0xbc675484a8c2c51174efb8b5369250eb8337750d), deploy block 11857314 |
-| AgentWallet, EVM demo agent-1 (Sepolia) | [`0xdd181c02a2979d13f4124dcd628cfe96c3248f2f`](https://sepolia.etherscan.io/address/0xdd181c02a2979d13f4124dcd628cfe96c3248f2f) |
-| Forwarder accepted by contract | `0x15fC6ae953E024d975e77382eEeC56A9101f9F88` (Sepolia MockKeystoneForwarder, per CRE forwarder directory) |
-| First broadcast run | 2026-10-06 17:30 UTC, `simulate.sh --broadcast`, CRE CLI v1.37.0 |
-| Solana agent | live devnet RPC. Program `2ppMVjwBs8dqNppcJctfTJaVb3rtfFFe5cDmJyxCGuSW` is not deployed yet, so the workflow skips agent-2 (no report) until it is |
+| AttestationRegistry v1 (Sepolia) | [`0xbc675484a8c2c51174efb8b5369250eb8337750d`](https://sepolia.etherscan.io/address/0xbc675484a8c2c51174efb8b5369250eb8337750d), deploy block 11857314. All txs below went to v1 |
+| AttestationRegistry v2 | Code in `contracts/evm` adds the security fixes below. Not deployed yet |
+| AgentWallet, EVM agent-1 (Sepolia) | [`0xdd181c02a2979d13f4124dcd628cfe96c3248f2f`](https://sepolia.etherscan.io/address/0xdd181c02a2979d13f4124dcd628cfe96c3248f2f) |
+| Forwarder accepted by the registry | `0x15fC6ae953E024d975e77382eEeC56A9101f9F88` (Sepolia MockKeystoneForwarder, from the CRE forwarder directory) |
+| Solana guard program (devnet) | `2ppMVjwBs8dqNppcJctfTJaVb3rtfFFe5cDmJyxCGuSW` |
+| CRE CLI | v1.37.0 |
 
 ## First broadcast run (6 Oct 2026, 17:30 UTC)
 
-Each tx goes to the MockKeystoneForwarder, which calls `AttestationRegistry.onReport`. Every one emitted `ControlResult` from the registry (checked from receipts, not only the simulator log). After the run `isCompliant` is true for agent-1 and agent-3. Agent-2 was skipped: the Solana guard program is not on devnet yet.
+Every tx below went through the MockKeystoneForwarder and emitted `ControlResult` from the registry. We checked the receipts, not only the simulator log. After the run, `isCompliant` was true for agent-1 and agent-3. Agent-2 was skipped because its Solana policy account did not exist yet.
 
 **Table A. Broadcast txs**
 
@@ -28,76 +29,76 @@ Each tx goes to the MockKeystoneForwarder, which calls `AttestationRegistry.onRe
 | attesta-demo-agent-3 | ATT-SPEND-01 | PASS | [0x95a3fbb7...](https://sepolia.etherscan.io/tx/0x95a3fbb7152dd9dc464341e10f828a3f3ee46abb430a93cf35c177c92fd4c188) |
 | attesta-demo-agent-3 | ATT-CPTY-02 | PASS | [0x5e52ffbb...](https://sepolia.etherscan.io/tx/0x5e52ffbb1a5498182ceb6efb2e2a6482357e3c70d0247947e9155c9abf952709) |
 
-Evidence behind the hashes: agent-1 paid the allowlisted vendor 0.001 ETH in [0xdf8cbb9b...](https://sepolia.etherscan.io/tx/0xdf8cbb9b0710896c5cfafa76ed0b3986a4ac7619b3813db6d96b6a67cfb1c878); agent-3 had 1 payment to the x402 seller on Cardano preprod (from Koios).
-
-Cost: about 0.004 Sepolia ETH per run of 5 writes. A first write to a new (agent, control) slot uses about 705k gas on Sepolia today, so `gasLimit` is 1,500,000.
+The evidence behind these hashes is real activity. Agent-1 paid the allowlisted vendor 0.001 ETH in [0xdf8cbb9b...](https://sepolia.etherscan.io/tx/0xdf8cbb9b0710896c5cfafa76ed0b3986a4ac7619b3813db6d96b6a67cfb1c878). Agent-3 made one payment to the x402 seller on Cardano preprod, read from Koios.
 
 ## Failure flow, end to end (6 Oct 2026, 17:35 to 17:37 UTC)
 
-Agent-2 pays someone off its allowlist on Solana. CRE writes ATT-CPTY-02 FAIL to Sepolia. The relayer freezes the agent on Solana. The next spend is rejected on-chain.
+Agent-2 pays someone off its allowlist on Solana. CRE writes ATT-CPTY-02 FAIL to Sepolia. The relayer freezes the agent on Solana, and the next spend is rejected on-chain.
 
 **Table B. Agent-2 failure flow**
 
 | Step | Chain | What happened | Tx |
 |---|---|---|---|
-| 1 | Solana devnet | Agent-2 spends 0.002 SOL to `Eg2z7iSr...` (not allowlisted). Spend succeeds, `SpendEvent.allowlisted = false` | [3fJ3Azi6...](https://explorer.solana.com/tx/3fJ3Azi6FwyMeq3mr4L51C3CpESgMise5tvAr8Nj2kY3LT8516V5kcd9tbkD8AUmaEX5PRUkkqr33ehSAEymbcKr?cluster=devnet) |
-| 1b | Solana devnet | A second off-allowlist spend to the same payee, made about 10 s later by solana-builder (both of us answered the same request). CRE cites this one in its evidence | [3eK9tjdr...](https://explorer.solana.com/tx/3eK9tjdrgRbU1PjVS8E15k3LmmtsJywFTB8HWCmPvZLQuBhv8UceLkmq1arVn7AwyXQHMPNJ1ewwec4qD3M9gGQe?cluster=devnet) |
-| 2 | Sepolia | CRE `simulate --broadcast` writes **ATT-CPTY-02 FAIL** for agent-2 (evidenceHash `0x97496a9d...`). `isCompliant(agent-2)` turns false | [0x462eb21b...](https://sepolia.etherscan.io/tx/0x462eb21b0bb352dfadd5cdf1fefeca8ab62b7f49c30e48da645fcf63d83b6e20) |
-| 2b | Sepolia | Same run: ATT-SPEND-01 PASS, ATT-KEY-03 PASS | [0x7068b8c1...](https://sepolia.etherscan.io/tx/0x7068b8c1bb50faf83dbdde25b5e0f9c2da26c7541c9a6df216ae810f480ed1af), [0xaf118ed4...](https://sepolia.etherscan.io/tx/0xaf118ed4e375339a44ff06ddb247996ba32073e338610795baa972b53dd37d70) |
-| 3 | Solana devnet | Relayer sees the FAIL and calls `set_frozen(true)`. Memo links the Sepolia tx | [2P8GkxMn...](https://explorer.solana.com/tx/2P8GkxMnBBfcRd7htXypUBPBPzAikT96R3xnyrGgwfUbihhamPSG52vw1hVZuuitC7myVJK2yRShWhirh7MQSCUB?cluster=devnet) |
-| 4 | Solana devnet | Agent-2 tries to pay the allowlisted payee. Rejected with `AgentFrozen` (custom error 6000) | [39or4JG4...](https://explorer.solana.com/tx/39or4JG4js1iUkPMexRomWEPt9dyjGSS6K3gqCd1F3Mzs2FnyAzaEqjoJpfVLNx2xLDhDJ2Fhfo9Qu2RtTyFrCgZ?cluster=devnet) |
+| 1 | Solana devnet | Agent-2 spends 0.002 SOL to `Eg2z7iSr...`, which is not allowlisted. The spend succeeds with `SpendEvent.allowlisted = false` | [3fJ3Azi6...](https://explorer.solana.com/tx/3fJ3Azi6FwyMeq3mr4L51C3CpESgMise5tvAr8Nj2kY3LT8516V5kcd9tbkD8AUmaEX5PRUkkqr33ehSAEymbcKr?cluster=devnet) |
+| 1b | Solana devnet | A second off-allowlist spend to the same payee about 10 s later. CRE cites this one in its evidence | [3eK9tjdr...](https://explorer.solana.com/tx/3eK9tjdrgRbU1PjVS8E15k3LmmtsJywFTB8HWCmPvZLQuBhv8UceLkmq1arVn7AwyXQHMPNJ1ewwec4qD3M9gGQe?cluster=devnet) |
+| 2 | Sepolia | CRE writes **ATT-CPTY-02 FAIL** for agent-2 (evidenceHash `0x97496a9d...`). `isCompliant(agent-2)` turns false | [0x462eb21b...](https://sepolia.etherscan.io/tx/0x462eb21b0bb352dfadd5cdf1fefeca8ab62b7f49c30e48da645fcf63d83b6e20) |
+| 2b | Sepolia | Same run: ATT-SPEND-01 PASS and ATT-KEY-03 PASS | [0x7068b8c1...](https://sepolia.etherscan.io/tx/0x7068b8c1bb50faf83dbdde25b5e0f9c2da26c7541c9a6df216ae810f480ed1af), [0xaf118ed4...](https://sepolia.etherscan.io/tx/0xaf118ed4e375339a44ff06ddb247996ba32073e338610795baa972b53dd37d70) |
+| 3 | Solana devnet | The relayer sees the FAIL and calls `set_frozen(true)`. Its memo links the Sepolia tx | [2P8GkxMn...](https://explorer.solana.com/tx/2P8GkxMnBBfcRd7htXypUBPBPzAikT96R3xnyrGgwfUbihhamPSG52vw1hVZuuitC7myVJK2yRShWhirh7MQSCUB?cluster=devnet) |
+| 4 | Solana devnet | Agent-2 tries to pay its allowlisted payee and is rejected with `AgentFrozen` (custom error 6000) | [39or4JG4...](https://explorer.solana.com/tx/39or4JG4js1iUkPMexRomWEPt9dyjGSS6K3gqCd1F3Mzs2FnyAzaEqjoJpfVLNx2xLDhDJ2Fhfo9Qu2RtTyFrCgZ?cluster=devnet) |
 
-The Sepolia FAIL block (11857358) has timestamp 17:36:00 UTC. The freeze tx has Solana block time 17:36:08 UTC. That is 8 seconds by the two chains' block clocks, which can drift by a few seconds.
+The Sepolia FAIL block (11857358) has timestamp 17:36:00 UTC. The freeze tx has Solana block time 17:36:08 UTC. That's 8 seconds by the two chains' block clocks, which can drift by a few seconds.
 
-Run it again: `cd programs/solana && pnpm spend -- unknown 2000000`, then `workflows/cre/scripts/simulate.sh --config ./config.agent-2.json --broadcast` (3 writes, about 0.002 Sepolia ETH).
+To run it again: `cd programs/solana && pnpm spend -- unknown 2000000`, then `workflows/cre/scripts/simulate.sh --config ./config.agent-2.json --broadcast`. That's 3 writes and about 0.002 Sepolia ETH.
 
 ## Agents
 
-Canonical ids, shared by every service. `agentId` on-chain is `keccak256(utf8 id)`.
+These ids are shared by every service. On-chain, `agentId` is `keccak256(utf8 id)`.
 
-**Table 0. Demo agents**
+**Table C. Demo agents**
 
-| Agent id | Chain | Evaluated by this workflow |
+| Agent id | Chain | Controls run |
 |---|---|---|
-| `attesta-demo-agent-1` | Sepolia, `AgentWallet` | yes |
-| `attesta-demo-agent-2` | Solana devnet, agent `2pVzN7yA5qS6ozXVpxkwiSQhHy9362L9mrHwbVSBJfmM`, policy PDA `2QAPFh8haAazrqeRhnZNqdVPittts2oQsaMQXtkTm6ZH` | yes, once the guard program is deployed and the agent registered |
-| `attesta-demo-agent-3` | Cardano preprod, x402 buyer wallet `addr_test1qz26gtjx...q2qc2rg` (Koios) | yes: ATT-SPEND-01 and ATT-CPTY-02 (plain key address, so no authority for ATT-KEY-03) |
+| `attesta-demo-agent-1` | Sepolia, `AgentWallet` | all three |
+| `attesta-demo-agent-2` | Solana devnet, agent `2pVzN7yA5qS6ozXVpxkwiSQhHy9362L9mrHwbVSBJfmM`, policy PDA `2QAPFh8haAazrqeRhnZNqdVPittts2oQsaMQXtkTm6ZH` | all three |
+| `attesta-demo-agent-3` | Cardano preprod, x402 buyer wallet `addr_test1qz26gtjx...q2qc2rg` (Koios) | ATT-SPEND-01 and ATT-CPTY-02. It's a plain key address, so there's no separate authority for ATT-KEY-03 to check |
 
-If an agent's evidence can't be fetched, the workflow writes nothing for it and logs `skipped`. A missing read is not a FAIL, because a FAIL freezes the agent.
+If we can't read an agent's evidence, the workflow writes nothing for it and logs `skipped`. A failed read is not a FAIL, because a FAIL freezes the agent.
+
+## Controls
+
+The full catalog is in `controls/catalog.json`. Table D shows the three controls this workflow runs.
+
+**Table D. Controls run by control-eval**
+
+| Control | Passes when | EVM evidence | Solana evidence | Cardano evidence |
+|---|---|---|---|---|
+| ATT-SPEND-01 | Today's spend <= approved cap, and on-chain cap <= approved cap | `AgentWallet.state()` | `AgentPolicy` account | Sum of today's outflows (Koios) |
+| ATT-CPTY-02 | Every payee in the window is on the allowlist. On Solana, also no `SpendEvent` with `allowlisted = false` | `Payment` logs, last 100 blocks | `SpendEvent` since the later of UTC day start and the latest unfreeze | Today's payees (Koios) |
+| ATT-KEY-03 | Signer and authority equal the registered ones | `AgentWallet.state()` | `AgentPolicy.agent` and `.authority` | not run |
+
+- **Policy of record.** The approved cap, allowlist, signer and authority live in the agent's config. We compare on-chain state against them, so raising the cap on-chain or swapping a key shows up as a failure. An empty `allowlist` in the config means "use the allowlist stored in the Solana `AgentPolicy`". The evidence JSON records which one we used.
+- **Window after an unfreeze.** On Solana, ATT-CPTY-02 only looks at spends after the agent's latest unfreeze (`FrozenChanged` with `frozen = false`). Once a person reviews a FAIL and unfreezes the agent, the spend that caused it doesn't fail the next run again. The evidence records `windowStart`.
+- **Cardano spend.** A tx counts as spend when one of its inputs is the agent's. Outputs to the agent's own payment credential are change. Only lovelace counts toward the cap.
+
+The evaluation logic is plain TypeScript in `control-eval/lib/controls.ts`, with unit tests in `control-eval/test/` (`bun test`).
 
 ## Per-run budget
 
-Checked against `cre workflow limits export` (CLI v1.37.0).
+These numbers are checked against `cre workflow limits export` (CLI v1.37.0).
 
-**Table 0b. Calls per run vs limits**
+**Table E. Calls per run vs limits**
 
 | Resource | Use per run | Limit |
 |---|---|---|
 | EVM chain reads | 3 (header, `state()`, `Payment` logs) | 15 |
-| HTTP calls | Solana 2 + up to 8 `getTransaction` = 10; Cardano 2 (1 if no txs today). Max 12 | 15 |
+| HTTP calls | Solana 2 + up to 8 `getTransaction`; Cardano 2 (1 if no txs today). Max 12 | 15 |
 | Chain writes | 3 + 3 + 2 = 8 reports | 10 (`ChainWrite.TargetsLimit`) |
-| Consensus observation | Cardano capped at 20 KB in code (about 8 KB for 10 real txs); Solana keeps only `Program data:` lines | 25 KB |
+| Consensus observation | Cardano capped at 20 KB in code (about 8 KB for 10 real txs). Solana keeps only `Program data:` lines | 25 KB |
 | Report size | 160 bytes each | 50 KB |
 
-Cardano reads today's txs only (`block_time >= UTC day start`, limit 10). If Koios returns 10 rows, the day may be cut off, so the agent is skipped rather than given a PASS on partial data.
+Cardano reads today's txs only (`block_time >= UTC day start`, limit 10). If Koios returns 10 rows, the day may be cut off, so we skip the agent rather than give it a PASS on partial data.
 
-## Controls
-
-The full catalog is in `controls/catalog.json`. Table 1 shows what this workflow runs today.
-
-**Table 1. Controls run by control-eval**
-
-| Control | Pass when | EVM evidence | Solana evidence |
-|---|---|---|---|
-| ATT-SPEND-01 | today's spend <= approved cap, and on-chain cap <= approved cap | `AgentWallet.state()` | `AgentPolicy` account (`getAccountInfo`) |
-| ATT-CPTY-02 | every payee in the window is on the allowlist, and (Solana) no `SpendEvent` has `allowlisted = false` | `Payment` logs, last 100 blocks | `SpendEvent` in last N txs (`getSignaturesForAddress` + `getTransaction`) |
-
-Cardano (agent-3): Koios `address_txs` + `tx_info`. A tx counts as spend when an input is the agent's; outputs to the agent's payment credential are change. Only lovelace counts toward the cap.
-| ATT-KEY-03 | signer and authority equal the registered ones | `AgentWallet.state()` | `AgentPolicy.agent` / `.authority` |
-
-The "policy of record" (approved cap, allowlist, registered signer and authority) lives in `config.staging.json` per agent. On-chain state is compared against it, so raising the cap on-chain or swapping a key shows up as a failure. An empty `allowlist` in the config means "use the allowlist stored in the Solana AgentPolicy"; the evidence JSON records which one was used.
-
-Evaluation logic is pure TypeScript in `control-eval/lib/controls.ts`, with unit tests in `control-eval/test/` (`bun test`).
+Cost on Sepolia today: a first write to a new (agent, control) slot uses about 705k gas, so `gasLimit` is 1,500,000. A run of 5 first writes cost about 0.004 Sepolia ETH.
 
 ## Report format
 
@@ -106,6 +107,12 @@ abi.encode(bytes32 controlId, bytes32 agentId, bool pass, bytes32 evidenceHash, 
 controlId = keccak256(utf8 "ATT-SPEND-01"), agentId = keccak256(utf8 "attesta-demo-agent-1")
 evidenceHash = keccak256(evidence JSON, logged by the workflow), ts = runtime.now() in unix seconds
 ```
+
+## Security notes
+
+- **Simulate-only stopgap.** The Sepolia MockKeystoneForwarder is permissionless and checks no signatures, so anyone can call it. Registry v2 also requires `tx.origin == reporter`, the EOA that broadcasts `cre workflow simulate`. The reporter defaults to the deployer, and the owner can change it. This doesn't authenticate the DON. With a deployed workflow behind the production KeystoneForwarder, which checks signed reports, we'd drop it and pin `setExpectedAuthor` instead. Registry v1 does not have this check.
+- **Report bounds (v2).** A `ts` more than 300 s ahead of block time reverts (`FutureTimestamp`). A `ts` older than the stored one reverts (`StaleReport`). The owner can `resetResult(agent, control)`. Only the 8 catalog control ids are accepted; anything else reverts with `UnknownControl`.
+- **Reverts don't fail the tx.** The MockKeystoneForwarder doesn't revert when `onReport` reverts. Etherscan shows success and the forwarder emits `ReportProcessed(..., result=false)`. The workflow checks `receiverContractExecutionStatus` and throws, so read the simulator log, not only the tx status.
 
 ## Pinned versions
 
@@ -122,8 +129,8 @@ evidenceHash = keccak256(evidence JSON, logged by the workflow), ts = runtime.no
 
 ## RPCs
 
-- **Sepolia:** `project.yaml` uses `${SEPOLIA_RPC_URL}`. `scripts/env.sh` defaults it to PublicNode (`https://ethereum-sepolia-rpc.publicnode.com`, public, no key). To use NOWNodes, add `SEPOLIA_RPC_URL=https://eth-sepolia.nownodes.io/<key>` to `~/.attesta-secrets/cre.env`. The deploy and demo scripts read the same variable.
-- **Solana:** `solana.rpcUrl` in the agent config. For a keyed RPC set `solana.apiKeyHeader` (NOWNodes uses `api-key`), set `secrets-path: "../secrets.yaml"` in `workflow.yaml`, and put `SOLANA_RPC_API_KEY=<key>` in `~/.attesta-secrets/cre.env`.
+- **Sepolia.** `project.yaml` uses `${SEPOLIA_RPC_URL}`. `scripts/env.sh` picks, in order: `SEPOLIA_RPC_URL` from `~/.attesta-secrets/cre.env`, then NOWNodes with the key in the URL path when `~/.attesta-secrets/nownodes.env` exists (CRE RPC entries take no headers), then PublicNode (`https://ethereum-sepolia-rpc.publicnode.com`, public, no key). The deploy and demo scripts read `SEPOLIA_RPC_URL` from the environment.
+- **Solana.** Set `solana.rpcUrl` in the agent config. For a keyed RPC, set `solana.apiKeyHeader` (NOWNodes uses `api-key`), set `secrets-path: "../secrets.yaml"` in `workflow.yaml`, and put `SOLANA_RPC_API_KEY=<key>` in `~/.attesta-secrets/cre.env`.
 
 ## Setup (once)
 
@@ -135,15 +142,15 @@ evidenceHash = keccak256(evidence JSON, logged by the workflow), ts = runtime.no
    tar -xzf cre_linux_amd64.tar.gz && install -m 755 cre_v1.37.0_linux_amd64 ~/.local/bin/cre
    ```
 
-2. Auth. `cre` needs a login for `init` and `simulate`. We use `cre login` (browser; session lives in `~/.cre`). Per the official chainlink-cre-skill, API-key auth also needs approval. If you do have a key, save it outside the repo:
+2. Log in with `cre login`. It opens a browser, and the session lives in `~/.cre`. API-key auth needs separate approval from Chainlink. If you have a key, save it outside the repo:
 
    ```bash
    umask 077; echo 'CRE_API_KEY=<key>' > ~/.attesta-secrets/cre.env
    ```
 
-3. Keys, all made with `cast wallet new --json`, chmod 600, in `~/.attesta-secrets/`: `sepolia-deployer.json` (pays gas, owns contracts), `sepolia-agent.json` (EVM agent hot key), `sepolia-vendor.json` (allowlisted payee). Fund the deployer with about 0.05 Sepolia ETH.
+3. Make the keys with `cast wallet new --json`, chmod 600, in `~/.attesta-secrets/`: `sepolia-deployer.json` (pays gas, owns contracts, broadcasts reports), `sepolia-agent.json` (EVM agent hot key), `sepolia-vendor.json` (allowlisted payee). Fund the deployer with about 0.05 Sepolia ETH.
 
-4. Contract deps:
+4. Install the contract deps:
 
    ```bash
    cd contracts/evm
@@ -158,13 +165,15 @@ evidenceHash = keccak256(evidence JSON, logged by the workflow), ts = runtime.no
 (cd contracts/evm && SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com forge test)
 (cd workflows/cre/control-eval && bun install && bun test)
 
-# deploy registry + demo AgentWallet, fund agent gas, patch config.staging.json with the addresses
+# deploy registry + AgentWallet, fund agent gas, patch config.staging.json
 workflows/cre/scripts/deploy-registry.sh
+# or redeploy only the registry and keep the AgentWallet
+REGISTRY_ONLY=1 workflows/cre/scripts/deploy-registry.sh
 
 # make the EVM agent pay someone (vendor = allowlisted, stranger = not)
 workflows/cre/scripts/demo-pay.sh vendor 0.001
 
-# receiver-free dry run: real reads + evaluation, no report, no tx, no ETH needed. Log -> workflows/cre/SIMULATION.md
+# receiver-free dry run: real reads and evaluation, no report, no tx, no ETH. Log goes to workflows/cre/SIMULATION.md
 workflows/cre/scripts/simulate-local.sh
 
 # dry run, then real txs
@@ -179,23 +188,20 @@ cast call <registry> "isCompliant(bytes32)(bool)" $(cast keccak attesta-demo-age
 
 ## Demo script
 
-1. `demo-pay.sh vendor` then `simulate.sh --broadcast`: all three EVM controls pass, `isCompliant` is true.
-2. `demo-pay.sh stranger` then `simulate.sh --broadcast`: ATT-CPTY-02 fails for the EVM agent, `isCompliant` turns false.
-3. Solana agent-2 spends to a key that is not on its allowlist (spend still succeeds on-chain, `SpendEvent.allowlisted = false`). Next run writes ATT-CPTY-02 FAIL for agent-2; the relayer freezes it.
+1. `demo-pay.sh vendor` then `simulate.sh --broadcast`. All three EVM controls pass and `isCompliant` is true.
+2. `demo-pay.sh stranger` then `simulate.sh --broadcast`. ATT-CPTY-02 fails for the EVM agent and `isCompliant` turns false.
+3. Agent-2 spends to a key off its allowlist on Solana. The next run writes ATT-CPTY-02 FAIL and the relayer freezes it (Table B).
 
-Fixture mode (`solana.mode: "fixture"`) exists for tests only. Fixture results are evaluated and logged but never written on-chain, so no demo tx can point at made-up data.
+Fixture mode (`solana.mode: "fixture"`) exists for tests only. We evaluate and log fixture results but never write them on-chain, so no demo tx can point at made-up data.
 
 ## Things that bite
 
-- The MockKeystoneForwarder does not revert when `onReport` reverts. The tx shows success on Etherscan and the forwarder emits `ReportProcessed(..., result=false)`. The workflow checks `receiverContractExecutionStatus` and throws, so read the simulator log, not only the tx status.
-- **Simulate-only stopgap (security review C1):** the Sepolia MockKeystoneForwarder is permissionless and checks no signatures, so anyone could call it and write to our registry. The registry therefore also requires `tx.origin == reporter`, the EOA that broadcasts `cre workflow simulate` (set to the deployer at construction, owner can change it). This is not real authentication of the DON. With a deployed workflow behind the production KeystoneForwarder (signed reports), drop it and pin `setExpectedAuthor` instead.
-- **Report bounds (C2):** `ts` more than 300 s ahead of block time reverts (`FutureTimestamp`), a `ts` older than the stored one reverts (`StaleReport`), and the owner can `resetResult(agent, control)`. Only the 8 catalog control ids are accepted (`UnknownControl` otherwise). Through the mock forwarder a revert does not fail the tx, so the workflow reads `receiverContractExecutionStatus`.
-- The simulator's forwarder does not pass real workflow metadata. Leave `setExpectedAuthor` at `address(0)` while simulating. Turn it on (and `setForwarderAddress` to the production KeystoneForwarder) once we have deploy access.
-- CRE caps a log query at 100 blocks. ATT-CPTY-02 on EVM only sees the last 100 blocks per run. With a 5 minute cron (about 25 blocks) the windows overlap, so nothing is skipped while the workflow runs on schedule.
-- `evmLogBlockTag` is `latest` for the demo so a payment shows up on the next run. Use `finalized` on a real DON; `latest` can differ between nodes.
-- One run sends up to 8 report txs. We read `ChainWrite.TargetsLimit: 10` as max writes per run (not confirmed in docs).
-- `test/MockForwarderFork.t.sol` calls the live Sepolia mock forwarder on a fork, so the forwarder path is tested before we spend gas.
-- An agent with no payments today passes ATT-SPEND-01 and ATT-CPTY-02. That is on purpose: zero spend breaks neither rule. The evidence JSON shows `paymentsSeen: 0` and `spentToday: "0"`, so a reader can tell an idle agent from a busy compliant one. An agent we can't read at all gets no result and stays non-compliant.
-- The `local-simulation` target follows the chainlink-cre-skill pattern with one difference: it still creates an `EVMClient`, because the EVM agent's evidence is an on-chain read. It never builds a report or calls `writeReport`. Production configs must set `mode: "production"` and a nonzero `registryAddress`, or the run fails.
-- Sepolia charged about 5x what forge's local EVM estimates for contract creation on 6 Oct 2026 (node `eth_estimateGas` 4.7M for the registry). Two deploy attempts ran out of gas before `deploy-registry.sh` got `--gas-estimate-multiplier 700`.
-- To refresh the Solana fixture: `bun test/fixture.ts` prints new `policyB64`, `txs` and the base58 keys used.
+- **Simulator metadata.** The simulator's forwarder doesn't pass real workflow metadata, so leave `setExpectedAuthor` at `address(0)` while simulating.
+- **EVM log window.** CRE caps a log query at 100 blocks, so ATT-CPTY-02 on EVM only sees the last 100 blocks per run. With a 5 minute cron (about 25 blocks) the windows would overlap. With manual runs, a payment older than about 20 minutes drops out of view.
+- **Block tag.** `evmLogBlockTag` is `latest` for the demo, so a payment shows up on the next run. Use `finalized` on a real DON, because `latest` can differ between nodes.
+- **Write limit.** One run sends up to 8 report txs. We read `ChainWrite.TargetsLimit: 10` as the max writes per run; the docs don't confirm that.
+- **Fork test.** `test/MockForwarderFork.t.sol` calls the live Sepolia mock forwarder on a fork, so we test the forwarder path before spending gas.
+- **Idle agents pass.** An agent with no payments today passes ATT-SPEND-01 and ATT-CPTY-02, because zero spend breaks neither rule. The evidence JSON shows `paymentsSeen: 0` and `spentToday: "0"`, so a reader can tell an idle agent from a busy compliant one.
+- **Local simulation.** The `local-simulation` target follows Chainlink's CRE skill pattern with one difference: it still creates an `EVMClient`, because the EVM agent's evidence is an on-chain read. It never builds a report or calls `writeReport`. Production configs must set `mode: "production"` and a nonzero `registryAddress`, or the run fails.
+- **Deploy gas.** On 6 Oct 2026, Sepolia charged about 5x what forge's local EVM estimates for contract creation (the node's `eth_estimateGas` gave 4.7M for the registry). Two deploys ran out of gas before `deploy-registry.sh` got `--gas-estimate-multiplier 700`.
+- **Refreshing the Solana fixture.** `bun test/fixture.ts` prints a new `policyB64`, `txs` and the base58 keys it used.
