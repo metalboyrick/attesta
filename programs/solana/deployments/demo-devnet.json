@@ -1,0 +1,15 @@
+{
+  "cluster": "devnet",
+  "agentId": "attesta-demo-agent-2",
+  "program": "2ppMVjwBs8dqNppcJctfTJaVb3rtfFFe5cDmJyxCGuSW",
+  "agent": "2pVzN7yA5qS6ozXVpxkwiSQhHy9362L9mrHwbVSBJfmM",
+  "authority": "26PteCCDtK2AButaeNLTuABN91EidBnnUEG3peB6V4n9",
+  "policy": "2QAPFh8haAazrqeRhnZNqdVPittts2oQsaMQXtkTm6ZH",
+  "vault": "Acko1NZdLeFZ8ZX9zofLj7PW5PxoxboqzrVqCvdQBaZ9",
+  "signatures": {
+    "spendOk": "2MCLYXT3uLCFCtcbXgk7reCghVUub2rnDVJftiStuJV5n17eLwmRZN9HwiDcWaQ4GFCAo2xjhbg1kPbJ2se2geVo",
+    "freeze": "2VguwJFiCy92cNRdeuvir8zppBLmGFD3kwgfqrQxpzZXxJrYePsTqrwRWY4K9NCARkRZEismPfHX99KTfWifnKFF",
+    "spendRejected": "5NRcDpr7kananQniFHnYwbyy8bPKAKtcMy7TQBxjq9Nkejf1F85ZYZs1KJgZgEoYBx9HMUELEJ6FRJ8ZMUeAnD9D"
+  },
+  "at": "2026-10-06T17:32:32.507Z"
+}

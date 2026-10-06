@@ -13,7 +13,21 @@ Anchor program that sits in front of an AI agent's wallet. Every agent spend goe
 
 Deployer funding: 0.488 devnet SOL from our default dev wallet, [`2mQov9Wv...`](https://explorer.solana.com/tx/2mQov9WvhSZTeYt5e2MGkucHZvhPnbcUXg9mYYMFEWgguH2Aqv2WzPfzUsbGuwvHZa61VJXnAeAX98cbrQE6xdHH?cluster=devnet).
 
-Demo transaction signatures are in [`deployments/demo-devnet.json`](deployments/demo-devnet.json) once the demo has run on devnet.
+Deployed 2026-10-06 (slot 508169197), upgrade authority `HSevicfphZE3y4zHpKd5Cc1AuPn9DyZhNgXGnjsgE4pP`.
+
+Table 1. Devnet transactions for the fixed demo agent `attesta-demo-agent-2` (`2pVzN7yA5qS6ozXVpxkwiSQhHy9362L9mrHwbVSBJfmM`, policy `2QAPFh8haAazrqeRhnZNqdVPittts2oQsaMQXtkTm6ZH`).
+
+| Step | Tx |
+|---|---|
+| Program deploy | [`5UsnuP8W...`](https://explorer.solana.com/tx/5UsnuP8WUQgZ4LA2f8tT7zQW82wnYECkTiUcwWAchiqHyeNYSXBR84t8EZbaU9nbXbGwTZPEgtsT7f8CdTg5iZP1?cluster=devnet) |
+| register_agent | [`muE1Ginu...`](https://explorer.solana.com/tx/muE1GinuRTQMVWTYPPhYzjE6GvHR3zY9ybx4rwzcKGoj8GjS8uM4GS9fxyBbMzu7ZktSfY6Z6Qhg4jN28hwpZ3W?cluster=devnet) |
+| Fund vault (0.03 SOL) | [`4KJtus6J...`](https://explorer.solana.com/tx/4KJtus6JMHBHXCpHNMuQnpYbEZjPFuWuc6j2zF9iHdU4tWAh982TR7Etvf5fj7H5ZmvBTW3fCiiCNFaCCVif8XAr?cluster=devnet) |
+| spend 0.001 SOL to allowlisted payee (ok) | [`2MCLYXT3...`](https://explorer.solana.com/tx/2MCLYXT3uLCFCtcbXgk7reCghVUub2rnDVJftiStuJV5n17eLwmRZN9HwiDcWaQ4GFCAo2xjhbg1kPbJ2se2geVo?cluster=devnet) |
+| set_frozen(true) by authority | [`2VguwJFi...`](https://explorer.solana.com/tx/2VguwJFiCy92cNRdeuvir8zppBLmGFD3kwgfqrQxpzZXxJrYePsTqrwRWY4K9NCARkRZEismPfHX99KTfWifnKFF?cluster=devnet) |
+| spend while frozen, fails `AgentFrozen` (6000) | [`5NRcDpr7...`](https://explorer.solana.com/tx/5NRcDpr7kananQniFHnYwbyy8bPKAKtcMy7TQBxjq9Nkejf1F85ZYZs1KJgZgEoYBx9HMUELEJ6FRJ8ZMUeAnD9D?cluster=devnet) |
+| set_frozen(false) by hand, agent left live for CRE | [`4CjTbPgc...`](https://explorer.solana.com/tx/4CjTbPgcuimChLyyHexLSnCpFphxS8HvGQ52QxCsaLYcVkDQAg9HwQ6CA1RboKcEF7WNJWpep4TZXZfD1ZgKXHxg?cluster=devnet) |
+
+The same signatures are in [`deployments/demo-devnet.json`](deployments/demo-devnet.json).
 
 ## Accounts
 
