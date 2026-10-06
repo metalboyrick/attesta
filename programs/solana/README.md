@@ -52,14 +52,27 @@ All commands run from `programs/solana`.
 anchor build                 # builds target/deploy/attesta_guard.so and target/idl
 cargo test                   # litesvm tests in programs/attesta_guard/tests (needs anchor build first)
 pnpm install
-pnpm demo                    # devnet: register -> spend ok -> freeze -> spend rejected
 ```
+
+Live demo scripts. All act on the fixed agent `attesta-demo-agent-2` (`solana-agent.json`), never a new one. Set `SOLANA_RPC_URL` to point at a local validator.
+
+| Command | What it does |
+|---|---|
+| `pnpm register` | Registers the agent on first run. Later runs sync cap (0.05 SOL/day) and allowlist, then top up the vault to 0.03 SOL. Prints policy state. |
+| `pnpm spend -- allowlisted 1000000` | Spends to the allowlisted payee `3yLbm2Dp7LjH8DW29SdtCMugzrmYxpMwRussm9xATWw6`. |
+| `pnpm spend -- unknown 2000000` | Spends to an off-allowlist payee `Eg2z7iSrpawo9shZDW9sKN2QZ7qA4zp48q6yoR2drMp`. Succeeds on-chain with `SpendEvent.allowlisted = false`, which is the evidence CRE fails on. |
+| `pnpm spend -- <pubkey> <lamports>` | Any recipient. Prints `OK` or `REJECTED AgentFrozen` / `REJECTED OverDailyCap` plus the explorer link, exit code 2 on rejection. |
+| `pnpm freeze [-- reasonCode]` | Manual fallback for the relayer: authority freezes the agent. |
+| `pnpm unfreeze` | Authority unfreezes the agent. |
+| `pnpm demo` | Full beat: unfreeze if needed, spend ok, freeze, spend rejected with `AgentFrozen`. Leaves the agent frozen and writes `deployments/demo-devnet.json`. |
+
+Rejected spends are sent with preflight off, so they land on-chain as failed transactions with a signature you can open in the explorer.
 
 Deploy (keys live outside the repo in `~/.attesta-secrets`, chmod 600):
 
 ```bash
 scripts/deploy-devnet.sh                 # build + deploy + refresh idl/
-DEMO_AGENT=persistent pnpm demo          # uses solana-agent.json = attesta-demo-agent-2
+pnpm register && pnpm demo
 ```
 
 After a rebuild, copy `target/idl/attesta_guard.json` and `target/types/attesta_guard.ts` into `idl/` so the relayer and dashboard pick up changes.

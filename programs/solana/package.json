@@ -4,7 +4,11 @@
   "license": "ISC",
   "type": "module",
   "scripts": {
+    "register": "tsx scripts/register.ts",
     "demo": "tsx scripts/demo.ts",
+    "spend": "tsx scripts/spend.ts",
+    "freeze": "tsx scripts/freeze.ts",
+    "unfreeze": "FROZEN=0 tsx scripts/freeze.ts",
     "typecheck": "tsc"
   },
   "dependencies": {
