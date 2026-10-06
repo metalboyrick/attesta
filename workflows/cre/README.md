@@ -34,6 +34,20 @@ The first run against v2. Agent-2's off-allowlist spends from Table B are still 
 
 **Run time.** Measured wall clock from `simulate.sh` start to the last receipt: the agent-3-only run (2 writes) took 37 s. About 11 s is startup (dependency check, WASM compile, simulator init), then each write waits for its own receipt, about 12 s per Sepolia block, one after another. Expect about 50 s for an agent-2-only run (3 writes) and about 110 s for a full run (8 writes).
 
+## Agent-2 reset after unfreeze (6 Oct 2026, 18:00 UTC, registry v2)
+
+A person unfroze agent-2 on Solana ([3oBhwkgy...](https://explorer.solana.com/tx/3oBhwkgytEAcHDRwrPcxFA8wgE51w9wCU4SFgEKVrxEoQJosMAksUd5ft3SCfPGVksXrJbBu2Uk48nLD4o3dZc7z?cluster=devnet)). The next CRE run counted only spends after that unfreeze (`windowStart` 1791309585), found none, and wrote three PASS results. `isCompliant(agent-2)` went back to true, and the relayer did not re-freeze it.
+
+**Table R. Agent-2 reset run**
+
+| Control | Result | Tx |
+|---|---|---|
+| ATT-SPEND-01 | PASS | [0x683b9390...](https://sepolia.etherscan.io/tx/0x683b93906d44804fc4329fc7790e35b88f1d2b935f6ecbaa3adb309f7509d194) |
+| ATT-CPTY-02 | PASS | [0xa9158a7f...](https://sepolia.etherscan.io/tx/0xa9158a7fd5350519f8401b0ec571a1ca9a6afeb30f13b5b4a018bd36b749764e) |
+| ATT-KEY-03 | PASS | [0x8b43ab66...](https://sepolia.etherscan.io/tx/0x8b43ab664ba8926e15419d926ff5f9891396f0203360c435c1f83c142bba2050) |
+
+Measured wall clock for this agent-2 broadcast, with the precompiled WASM: 48.5 s from `simulate.sh` start to the last receipt. The three writes landed in blocks at 18:00:12, 18:00:36 and 18:00:48; the middle one waited two blocks.
+
 **Faster startup.** `simulate.sh` and `simulate-local.sh` now pass a precompiled WASM (`scripts/build-wasm.sh`, rebuilt only when a source file changes) via `--wasm`. Measured with dry runs (no tx) for agent-2: start to trigger went from about 11 s to about 2 s, and a full agent-2 dry run takes 3.5 s. A broadcast agent-2 run should take about 2 s + 1.5 s of reads + 3 writes at about 12 s each, so about 40 s. That's an estimate until we broadcast again. Run `scripts/build-wasm.sh` once before the demo so the first run doesn't compile. `SKIP_PREBUILT=1` forces a normal compile.
 
 **Solana rate limit.** The public devnet RPC returned HTTP 429 on `getTransaction` after several back-to-back runs. The agent is then skipped, never failed. Leave about a minute between runs on the public RPC, or use a keyed Solana RPC.
