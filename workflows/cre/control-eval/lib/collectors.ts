@@ -36,6 +36,7 @@ export const collectEvm = (
 	wallet: Address,
 	blockTag: 'latest' | 'finalized',
 ): Evidence => {
+	if (/^0x0{40}$/i.test(wallet)) throw new Error('AgentWallet not deployed (wallet is the zero address)')
 	const tag = blockTag === 'finalized' ? LAST_FINALIZED_BLOCK_NUMBER : LATEST_BLOCK_NUMBER
 	const header = evm.headerByNumber(runtime, { blockNumber: tag }).result()
 	if (!header.header?.blockNumber) throw new Error('EVM header missing block number')

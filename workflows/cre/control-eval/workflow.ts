@@ -106,6 +106,7 @@ export const onCronTrigger = (runtime: Runtime<Config>): string => {
 
 	const written: string[] = []
 	const skipped: string[] = []
+	const dryRun: string[] = []
 	const failures: string[] = []
 
 	for (const agent of config.agents) {
@@ -131,7 +132,7 @@ export const onCronTrigger = (runtime: Runtime<Config>): string => {
 			for (const o of outcomes) {
 				const evidenceHash = keccak256(stringToHex(o.evidence))
 				runtime.log(`evidence ${o.evidence}`.slice(0, 1000))
-				skipped.push(`${agent.agentId}/${o.controlId}=${o.pass ? 'PASS' : 'FAIL'} evidenceHash=${evidenceHash} (local-simulation, wouldWrite)`)
+				dryRun.push(`${agent.agentId}/${o.controlId}=${o.pass ? 'PASS' : 'FAIL'} evidenceHash=${evidenceHash}`)
 			}
 			continue
 		}
@@ -143,9 +144,10 @@ export const onCronTrigger = (runtime: Runtime<Config>): string => {
 	}
 
 	skipped.forEach((m) => runtime.log(`skipped ${m}`))
+	dryRun.forEach((m) => runtime.log(`wouldWrite ${m}`))
 	written.forEach((w) => runtime.log(`written ${w}`))
 	if (failures.length > 0) throw new Error(`write failures: ${failures.join('; ')}`)
-	return [...written, ...skipped.map((m) => `skipped ${m}`)].join('\n')
+	return [...written, ...dryRun.map((m) => `wouldWrite ${m}`), ...skipped.map((m) => `skipped ${m}`)].join('\n')
 }
 
 const collect = (
