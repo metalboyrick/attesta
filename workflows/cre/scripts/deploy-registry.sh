@@ -1,7 +1,29 @@
 #!/usr/bin/env bash
-# Deploys AttestationRegistry to Sepolia with the MockKeystoneForwarder (simulate) as the allowed forwarder.
+# Deploys AttestationRegistry (forwarder = Sepolia MockKeystoneForwarder) and a demo AgentWallet to Sepolia,
+# then funds the agent signer for gas and writes both addresses into control-eval/config.staging.json.
 set -euo pipefail
-cd "$(dirname "$0")/../../../contracts/evm"
+here="$(cd "$(dirname "$0")/.." && pwd)"
+S="$HOME/.attesta-secrets"
 RPC="${SEPOLIA_RPC_URL:-https://ethereum-sepolia-rpc.publicnode.com}"
-pk=$(jq -r '.[0].private_key' "$HOME/.attesta-secrets/sepolia-deployer.json")
+pk=$(jq -r '.[0].private_key' "$S/sepolia-deployer.json")
+export AGENT_SIGNER=$(jq -r '.[0].address' "$S/sepolia-agent.json")
+export VENDOR=$(jq -r '.[0].address' "$S/sepolia-vendor.json")
+
+cd "$here/../../contracts/evm"
 forge script script/Deploy.s.sol --rpc-url "$RPC" --private-key "$pk" --broadcast
+run=broadcast/Deploy.s.sol/11155111/run-latest.json
+reg=$(jq -r '[.transactions[] | select(.contractName=="AttestationRegistry")][0].contractAddress' "$run")
+wallet=$(jq -r '[.transactions[] | select(.contractName=="AgentWallet")][0].contractAddress' "$run")
+
+# gas money for the agent hot key so it can call pay()
+cast send "$AGENT_SIGNER" --value 0.003ether --rpc-url "$RPC" --private-key "$pk" >/dev/null
+
+cfg="$here/control-eval/config.staging.json"
+deployer=$(cast wallet address --private-key "$pk")
+tmp=$(mktemp)
+jq --arg reg "$reg" --arg w "$wallet" --arg s "$AGENT_SIGNER" --arg o "$deployer" --arg v "$VENDOR" '
+  .registryAddress = $reg
+  | (.agents[] | select(.kind == "evm")) |= (.wallet = $w
+      | .policy.registeredSigner = $s | .policy.registeredAuthority = $o | .policy.allowlist = [$v])' "$cfg" > "$tmp"
+mv "$tmp" "$cfg"
+echo "registry=$reg wallet=$wallet signer=$AGENT_SIGNER vendor=$VENDOR"

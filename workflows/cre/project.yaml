@@ -1,5 +1,6 @@
-# CRE project settings. RPC is the public PublicNode Sepolia endpoint (no key).
+# CRE project settings. SEPOLIA_RPC_URL must be set (scripts/env.sh defaults it to PublicNode).
+# To switch to NOWNodes: SEPOLIA_RPC_URL=https://eth-sepolia.nownodes.io/<key> in ~/.attesta-secrets/cre.env
 staging-settings:
   rpcs:
     - chain-name: ethereum-testnet-sepolia
-      url: https://ethereum-sepolia-rpc.publicnode.com
+      url: ${SEPOLIA_RPC_URL}

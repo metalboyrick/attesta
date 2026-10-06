@@ -3,10 +3,54 @@
   "chainSelectorName": "ethereum-testnet-sepolia",
   "registryAddress": "0x0000000000000000000000000000000000000000",
   "gasLimit": "500000",
-  "agentId": "attesta-demo-agent-1",
-  "control": {
-    "id": "ATT-SPEND-01",
-    "observedDailySpendUsd": 420,
-    "dailySpendCapUsd": 1000
-  }
+  "evmLogBlockTag": "latest",
+  "agents": [
+    {
+      "agentId": "attesta-demo-agent-1",
+      "kind": "evm",
+      "wallet": "0x0000000000000000000000000000000000000000",
+      "policy": {
+        "approvedDailyCap": "10000000000000000",
+        "allowlist": [],
+        "registeredSigner": "0x0000000000000000000000000000000000000000",
+        "registeredAuthority": "0x0000000000000000000000000000000000000000"
+      }
+    },
+    {
+      "agentId": "attesta-demo-agent-sol-1",
+      "kind": "solana",
+      "solana": {
+        "mode": "fixture",
+        "rpcUrl": "https://api.devnet.solana.com",
+        "policyPda": "REPLACE_WITH_POLICY_PDA",
+        "commitment": "confirmed",
+        "maxTxs": 5,
+        "fixture": {
+          "policyB64": "lMHagRVgw00BAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAMqaOwAAAAAAhNcXAAAAAPxQAAAAAAAAAAEAAAADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA//+",
+          "txs": [
+            {
+              "signature": "fixtureSig2",
+              "logMessages": [
+                "Program data: NVitt0rNG7YBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAOH1BQAAAAAAhNcXAAAAAADKmjsAAAAAACiGxGoAAAAA"
+              ]
+            },
+            {
+              "signature": "fixtureSig1",
+              "logMessages": [
+                "Program data: NVitt0rNG7YBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAKPhEQAAAAAAo+ERAAAAAADKmjsAAAAAAeyFxGoAAAAA"
+              ]
+            }
+          ]
+        }
+      },
+      "policy": {
+        "approvedDailyCap": "1000000000",
+        "allowlist": [
+          "CktRuQ2mttgRGkXJtyksdKHjUdc2C4TgDzyB98oEzy8"
+        ],
+        "registeredSigner": "4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi",
+        "registeredAuthority": "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR"
+      }
+    }
+  ]
 }

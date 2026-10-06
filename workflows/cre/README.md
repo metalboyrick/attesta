@@ -1,17 +1,43 @@
 # CRE control-eval workflow
 
-A Chainlink CRE cron workflow. It evaluates one control (`ATT-SPEND-01`, agent daily spend at or under its cap), hashes the evidence, and writes a `ControlResult` report to `AttestationRegistry` on Ethereum Sepolia.
+A Chainlink CRE cron workflow. Every 5 minutes it collects evidence for each agent, runs three controls, and writes one `ControlResult` report per (agent, control) to `AttestationRegistry` on Ethereum Sepolia.
 
-We only run it with `cre workflow simulate --broadcast`. Deploying to the CRE network is Early Access gated. With `--broadcast` the simulator sends a real Sepolia tx to the MockKeystoneForwarder, which calls our contract's `onReport`.
+We only run it with `cre workflow simulate --broadcast`. Deploying to the CRE network is Early Access gated. With `--broadcast` the simulator sends real Sepolia txs to the MockKeystoneForwarder, which calls our contract's `onReport`.
 
 ## Status
 
 | Item | Value |
 |---|---|
 | AttestationRegistry (Sepolia) | _pending: deployer not funded yet_ |
+| AgentWallet, EVM demo agent (Sepolia) | _pending_ |
 | Forwarder accepted by contract | `0x15fC6ae953E024d975e77382eEeC56A9101f9F88` (Sepolia MockKeystoneForwarder, per CRE forwarder directory) |
 | Broadcast tx | _pending_ |
 | Etherscan | _pending_ |
+| Solana agent | fixture mode until `attesta_guard` is on devnet (program id `2ppMVjwBs8dqNppcJctfTJaVb3rtfFFe5cDmJyxCGuSW`) |
+
+## Controls
+
+The full catalog is in `controls/catalog.json`. Table 1 shows what this workflow runs today.
+
+**Table 1. Controls run by control-eval**
+
+| Control | Pass when | EVM evidence | Solana evidence |
+|---|---|---|---|
+| ATT-SPEND-01 | today's spend <= approved cap, and on-chain cap <= approved cap | `AgentWallet.state()` | `AgentPolicy` account (`getAccountInfo`) |
+| ATT-CPTY-02 | every payee in the window is on the allowlist | `Payment` logs, last 100 blocks | `SpendEvent` in last N txs (`getSignaturesForAddress` + `getTransaction`) |
+| ATT-KEY-03 | signer and authority equal the registered ones | `AgentWallet.state()` | `AgentPolicy.agent` / `.authority` |
+
+The "policy of record" (approved cap, allowlist, registered signer and authority) lives in `config.staging.json` per agent. On-chain state is compared against it, so raising the cap on-chain or swapping a key shows up as a failure.
+
+Evaluation logic is pure TypeScript in `control-eval/lib/controls.ts`, with unit tests in `control-eval/test/` (`bun test`).
+
+## Report format
+
+```
+abi.encode(bytes32 controlId, bytes32 agentId, bool pass, bytes32 evidenceHash, uint64 ts)
+controlId = keccak256(utf8 "ATT-SPEND-01"), agentId = keccak256(utf8 "attesta-demo-agent-1")
+evidenceHash = keccak256(evidence JSON, logged by the workflow), ts = runtime.now() in unix seconds
+```
 
 ## Pinned versions
 
@@ -26,19 +52,14 @@ We only run it with `cre workflow simulate --broadcast`. Deploying to the CRE ne
 | OpenZeppelin | v5.4.0 | `lib/` is gitignored, see setup |
 | forge-std | v1.17.0 | |
 
-RPC: PublicNode `https://ethereum-sepolia-rpc.publicnode.com` (public, no key). We did not set up NOWNodes.
+## RPCs
 
-## Report format
-
-```
-abi.encode(bytes32 controlId, bytes32 agentId, bool pass, bytes32 evidenceHash, uint64 ts)
-controlId = keccak256("ATT-SPEND-01"), agentId = keccak256("attesta-demo-agent-1")
-evidenceHash = keccak256(evidence JSON), ts = runtime.now() in unix seconds
-```
+- **Sepolia:** `project.yaml` uses `${SEPOLIA_RPC_URL}`. `scripts/env.sh` defaults it to PublicNode (`https://ethereum-sepolia-rpc.publicnode.com`, public, no key). To use NOWNodes, add `SEPOLIA_RPC_URL=https://eth-sepolia.nownodes.io/<key>` to `~/.attesta-secrets/cre.env`. The deploy and demo scripts read the same variable.
+- **Solana:** `solana.rpcUrl` in the agent config. For a keyed RPC set `solana.apiKeyHeader` (NOWNodes uses `api-key`), set `secrets-path: "../secrets.yaml"` in `workflow.yaml`, and put `SOLANA_RPC_API_KEY=<key>` in `~/.attesta-secrets/cre.env`.
 
 ## Setup (once)
 
-1. Install the CRE CLI with checksum check:
+1. Install the CRE CLI with a checksum check:
 
    ```bash
    gh release download v1.37.0 -R smartcontractkit/cre-cli -p cre_linux_amd64.tar.gz
@@ -52,7 +73,7 @@ evidenceHash = keccak256(evidence JSON), ts = runtime.now() in unix seconds
    umask 077; echo 'CRE_API_KEY=<key>' > ~/.attesta-secrets/cre.env
    ```
 
-3. Sepolia key. Ours was made with `cast wallet new --json > ~/.attesta-secrets/sepolia-deployer.json` (chmod 600). Fund its address with Sepolia ETH.
+3. Keys, all made with `cast wallet new --json`, chmod 600, in `~/.attesta-secrets/`: `sepolia-deployer.json` (pays gas, owns contracts), `sepolia-agent.json` (EVM agent hot key), `sepolia-vendor.json` (allowlisted payee). Fund the deployer with about 0.05 Sepolia ETH.
 
 4. Contract deps:
 
@@ -65,25 +86,38 @@ evidenceHash = keccak256(evidence JSON), ts = runtime.now() in unix seconds
 ## Run
 
 ```bash
-# contract tests (fork test runs only when SEPOLIA_RPC_URL is set)
-cd contracts/evm && SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com forge test
+# tests
+(cd contracts/evm && SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com forge test)
+(cd workflows/cre/control-eval && bun install && bun test)
 
-# deploy registry (forwarder = Sepolia MockKeystoneForwarder)
+# deploy registry + demo AgentWallet, fund agent gas, patch config.staging.json with the addresses
 workflows/cre/scripts/deploy-registry.sh
-# then put the address in workflows/cre/control-eval/config.staging.json -> registryAddress
 
-# dry run, then real tx
+# make the EVM agent pay someone (vendor = allowlisted, stranger = not)
+workflows/cre/scripts/demo-pay.sh vendor 0.001
+
+# dry run, then real txs
 workflows/cre/scripts/simulate.sh
 workflows/cre/scripts/simulate.sh --broadcast
 
 # check
-cast call <registry> "isCompliant(bytes32)(bool)" $(cast keccak attesta-demo-agent-1) --rpc-url https://ethereum-sepolia-rpc.publicnode.com
+cast call <registry> "isCompliant(bytes32)(bool)" $(cast keccak attesta-demo-agent-1) --rpc-url $SEPOLIA_RPC_URL
 ```
 
-`scripts/env.sh` builds `~/.attesta-secrets/cre-sim.env` (chmod 600) from the secrets dir and passes it with `-e`. No key ever sits in the repo.
+`scripts/env.sh` builds `~/.attesta-secrets/cre-sim.env` (chmod 600) and passes it with `-e`. No key ever sits in the repo.
+
+## Demo script
+
+1. `demo-pay.sh vendor` then `simulate.sh --broadcast`: all three EVM controls pass, `isCompliant` is true.
+2. `demo-pay.sh stranger` then `simulate.sh --broadcast`: ATT-CPTY-02 fails for the EVM agent, `isCompliant` turns false.
+3. The Solana fixture is built to fail ATT-CPTY-02 (one payment to a non-allowlisted key), so the Solana agent shows a FAIL from the first run.
 
 ## Things that bite
 
 - The MockKeystoneForwarder does not revert when `onReport` reverts. The tx shows success on Etherscan and the forwarder emits `ReportProcessed(..., result=false)`. The workflow checks `receiverContractExecutionStatus` and throws, so read the simulator log, not only the tx status.
 - The simulator's forwarder does not pass real workflow metadata. Leave `setExpectedAuthor` at `address(0)` while simulating. Turn it on (and `setForwarderAddress` to the production KeystoneForwarder) once we have deploy access.
+- CRE caps a log query at 100 blocks. ATT-CPTY-02 on EVM only sees the last 100 blocks per run. With a 5 minute cron (about 25 blocks) the windows overlap, so nothing is skipped while the workflow runs on schedule.
+- `evmLogBlockTag` is `latest` for the demo so a payment shows up on the next run. Use `finalized` on a real DON; `latest` can differ between nodes.
+- One run sends 6 report txs (2 agents x 3 controls). `cre workflow limits export` shows `ChainWrite.TargetsLimit: 10`. We read that as max writes per run (not confirmed in docs), which would cap us at 3 agents per run.
 - `test/MockForwarderFork.t.sol` calls the live Sepolia mock forwarder on a fork, so the forwarder path is tested before we spend gas.
+- To refresh the Solana fixture: `bun test/fixture.ts` prints new `policyB64`, `txs` and the base58 keys used.

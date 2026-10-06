@@ -1,0 +1,55 @@
+import { base64Decode, BorshReader, startsWith } from './codec'
+import type { Evidence, Payment, Snapshot } from './types'
+
+// Anchor discriminators, checked against programs/solana/target/idl/attesta_guard.json.
+export const AGENT_POLICY_DISC = [148, 193, 218, 129, 21, 96, 195, 77] as const
+export const SPEND_EVENT_DISC = [53, 88, 173, 183, 74, 205, 27, 182] as const
+
+/** AgentPolicy: agent, authority, daily_cap u64, spent_today u64, day_index i64, frozen bool, allowlist vec<pubkey>, bump, vault_bump */
+export const decodePolicy = (dataB64: string): Snapshot => {
+	const raw = base64Decode(dataB64)
+	if (!startsWith(raw, AGENT_POLICY_DISC)) throw new Error('not an AgentPolicy account')
+	const r = new BorshReader(raw)
+	r.skip(8)
+	const signer = r.pubkey()
+	const authority = r.pubkey()
+	const onchainCap = r.u64()
+	const spentToday = r.u64()
+	const dayIndex = r.i64()
+	const frozen = r.bool()
+	return {
+		authority,
+		signer,
+		onchainCap: onchainCap.toString(),
+		spentToday: spentToday.toString(),
+		dayIndex: dayIndex.toString(),
+		frozen,
+	}
+}
+
+/** Pulls SpendEvents out of a tx's "Program data:" log lines. */
+export const decodeSpendEvents = (signature: string, logMessages: string[]): Payment[] => {
+	const out: Payment[] = []
+	for (const line of logMessages) {
+		if (!line.startsWith('Program data: ')) continue
+		const raw = base64Decode(line.slice('Program data: '.length))
+		if (!startsWith(raw, SPEND_EVENT_DISC)) continue
+		const r = new BorshReader(raw)
+		r.skip(8)
+		r.pubkey() // agent
+		const to = r.pubkey()
+		const amount = r.u64()
+		out.push({ to, amount: amount.toString(), ref: signature })
+	}
+	return out
+}
+
+export type SolanaTx = { signature: string; logMessages: string[] }
+
+export const buildSolanaEvidence = (policyB64: string, txs: SolanaTx[]): Evidence => ({
+	source: 'solana',
+	snapshot: decodePolicy(policyB64),
+	payments: txs.flatMap((t) => decodeSpendEvents(t.signature, t.logMessages)),
+	// Newest signature first (getSignaturesForAddress order) marks the observation point.
+	at: txs[0]?.signature ?? 'no-txs',
+})
