@@ -34,7 +34,7 @@ Table 2. End-to-end run on 2026-10-06: CRE fails a control on Sepolia, and the r
 | Step | Tx |
 |---|---|
 | Off-allowlist spends. CRE cited the second (`3eK9...`) as evidence | [`3fJ3Azi6...`](https://explorer.solana.com/tx/3fJ3Azi6FwyMeq3mr4L51C3CpESgMise5tvAr8Nj2kY3LT8516V5kcd9tbkD8AUmaEX5PRUkkqr33ehSAEymbcKr?cluster=devnet) and [`3eK9tjdr...`](https://explorer.solana.com/tx/3eK9tjdrgRbU1PjVS8E15k3LmmtsJywFTB8HWCmPvZLQuBhv8UceLkmq1arVn7AwyXQHMPNJ1ewwec4qD3M9gGQe?cluster=devnet) |
-| CRE writes ATT-CPTY-02 FAIL on Sepolia (block 11857358) | [`0x462eb21b...`](https://sepolia.etherscan.io/tx/0x462eb21b0bb352dfadd5cdf1fefeca8ab62b7f49c30e48da645fcf63d83b6e20) |
+| CRE writes ATT-CPTY-02 FAIL on Sepolia (block 11857358, registry v1 `0xbc6754...`, since retired) | [`0x462eb21b...`](https://sepolia.etherscan.io/tx/0x462eb21b0bb352dfadd5cdf1fefeca8ab62b7f49c30e48da645fcf63d83b6e20) |
 | Relayer set_frozen(true), memo links the Sepolia tx | [`2P8GkxMn...`](https://explorer.solana.com/tx/2P8GkxMnBBfcRd7htXypUBPBPzAikT96R3xnyrGgwfUbihhamPSG52vw1hVZuuitC7myVJK2yRShWhirh7MQSCUB?cluster=devnet) |
 | Spend while frozen, fails `AgentFrozen` | [`39or4JG4...`](https://explorer.solana.com/tx/39or4JG4js1iUkPMexRomWEPt9dyjGSS6K3gqCd1F3Mzs2FnyAzaEqjoJpfVLNx2xLDhDJ2Fhfo9Qu2RtTyFrCgZ?cluster=devnet) |
 
