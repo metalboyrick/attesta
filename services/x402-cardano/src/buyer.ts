@@ -6,6 +6,8 @@
  * a Cardano transaction with the Evolution SDK signer (this wallet pays the
  * amount and the network fee) → retry with PAYMENT-SIGNATURE → facilitator
  * verifies and settles → 200 with the attestation and a PAYMENT-RESPONSE receipt.
+ * The counterparty then decides: DEAL when the agent is compliant, DECLINE
+ * otherwise (exit code 0 for DEAL, 2 for DECLINE, 1 for errors).
  *
  * Usage: npm run buyer -- [agentId]
  */
@@ -13,6 +15,7 @@ import { x402Client, wrapFetchWithPayment, x402HTTPClient } from "@x402/fetch";
 import { toClientCardanoSigner } from "@x402/cardano";
 import { ExactCardanoScheme } from "@x402/cardano/exact/client";
 import { NETWORK, provider } from "./env.js";
+import type { Attestation } from "./attestation.js";
 
 if (!process.env.MNEMONIC) {
   console.error("MNEMONIC not found; run `npm run wallet` to create ~/.attesta-secrets/cardano-preprod.env");
@@ -48,7 +51,8 @@ async function main() {
     process.exit(1);
   }
 
-  console.log("Body:", JSON.stringify(await response.json(), null, 2));
+  const attestation = (await response.json()) as Attestation;
+  console.log("Attestation:", JSON.stringify(attestation, null, 2));
 
   const receipt = new x402HTTPClient(client).getPaymentSettleResponse(name =>
     response.headers.get(name),
@@ -56,6 +60,15 @@ async function main() {
   console.log("\nPayment receipt:", JSON.stringify(receipt, null, 2));
   if (receipt?.transaction) {
     console.log(`\nExplorer: https://preprod.cardanoscan.io/transaction/${receipt.transaction}`);
+  }
+
+  const failing = attestation.controls.filter(c => !c.pass).map(c => c.id);
+  if (attestation.compliant) {
+    console.log(`\nDEAL: ${agentId} is compliant (${attestation.controls.length} controls, source ${attestation.source})`);
+  } else {
+    const why = failing.length ? `failing ${failing.join(", ")}` : "no recorded controls";
+    console.log(`\nDECLINE: ${agentId} is not compliant (${why}, source ${attestation.source})`);
+    process.exitCode = 2;
   }
 }
 

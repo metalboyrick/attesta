@@ -16,12 +16,14 @@ import { ExactCardanoScheme } from "@x402/cardano/exact/facilitator";
 
 
 const chain = provider();
-// Without Blockfrost the signer cannot read confirmation depth, so it must
-// wait for block inclusion itself (routes then need l1Confirmations: 0).
+const blockfrost = "blockfrost" in chain && chain.blockfrost !== undefined;
+// Without Blockfrost the signer cannot read confirmation depth, so it waits
+// for block inclusion itself, bounded by requestTimeoutMs (routes then need
+// L1_CONFIRMATIONS=0). Kept under the resource server's 90s client timeout.
 const signer = toFacilitatorCardanoSigner({
   network: NETWORK,
-  provider: chain,
-  awaitConfirmation: !("blockfrost" in chain && chain.blockfrost),
+  provider: blockfrost ? chain : { ...chain, requestTimeoutMs: 80_000 },
+  awaitConfirmation: !blockfrost,
 });
 
 const facilitator = new x402Facilitator();

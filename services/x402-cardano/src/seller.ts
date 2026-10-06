@@ -11,7 +11,7 @@ import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactCardanoScheme } from "@x402/cardano/exact/server";
 import { NETWORK } from "./env.js";
-import { attestationFor } from "./attestation.js";
+import { attestationFor, attestationSource } from "./attestation.js";
 
 const payTo = process.env.SELLER_ADDRESS;
 const facilitatorUrl =
@@ -22,6 +22,13 @@ if (!payTo?.startsWith("addr_test1")) {
 }
 
 const PRICE_LOVELACE = process.env.PRICE_LOVELACE ?? "1000000"; // 1 tADA, clears min-UTxO
+// The local facilitator on Koios can only prove block inclusion, so it needs
+// L1_CONFIRMATIONS=0; unset keeps the spec default of 1 (hosted facilitator).
+const l1Confirmations = process.env.L1_CONFIRMATIONS;
+const extra =
+  l1Confirmations === undefined
+    ? undefined
+    : { confirmationPolicy: { l1Confirmations: Number(l1Confirmations) } };
 
 const resourceServer = new x402ResourceServer(new HTTPFacilitatorClient({ url: facilitatorUrl }));
 resourceServer.register(NETWORK, new ExactCardanoScheme());
@@ -38,6 +45,7 @@ app.use(
             network: NETWORK,
             price: { amount: PRICE_LOVELACE, asset: "lovelace" },
             payTo,
+            ...(extra && { extra }),
           },
         ],
         description: "Attesta compliance attestation for one AI agent",
@@ -49,7 +57,13 @@ app.use(
 );
 
 app.get("/attest/:agentId", async (req, res) => {
-  res.json(await attestationFor(req.params.agentId));
+  try {
+    res.json(await attestationFor(req.params.agentId));
+  } catch (error) {
+    // A failed response is not settled, so the buyer is not charged.
+    console.error("[attest] registry read failed:", error);
+    res.status(502).json({ error: "attestation source unavailable" });
+  }
 });
 
 app.get("/health", (_req, res) => {
@@ -61,4 +75,6 @@ app.listen(port, () => {
   console.log(`Seller listening on http://localhost:${port}`);
   console.log(`Paid route: GET /attest/:agentId (${Number(PRICE_LOVELACE) / 1_000_000} tADA on ${NETWORK})`);
   console.log(`Facilitator: ${facilitatorUrl}`);
+  console.log(`Attestation source: ${attestationSource}`);
+  if (extra) console.log(`l1Confirmations: ${extra.confirmationPolicy.l1Confirmations}`);
 });
