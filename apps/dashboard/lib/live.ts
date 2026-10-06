@@ -111,13 +111,23 @@ async function solanaGuard() {
 
   const sigs = await conn.getSignaturesForAddress(policy, { limit: 25 });
   const ok = sigs.filter(s => !s.err).map(s => s.signature);
-  const txs = await conn.getTransactions(
-    ok,
-    { maxSupportedTransactionVersion: 0 },
-  );
+  // Confirmed txs never change, so each signature is fetched once. Sequential,
+  // because public devnet RPC rate-limits batched getTransactions.
+  for (const sig of ok) {
+    if (solanaTxEvents.has(sig)) continue;
+    const tx = await conn.getTransaction(sig, { maxSupportedTransactionVersion: 0 });
+    if (tx) solanaTxEvents.set(sig, frozenEvents(sig, tx.meta?.logMessages ?? []));
+  }
+  const events = ok.flatMap(sig => solanaTxEvents.get(sig) ?? []);
+  return { frozen, events, policy: policy.toBase58(), missing: !info };
+}
+
+const solanaTxEvents = new Map<string, TimelineEvent[]>();
+
+function frozenEvents(sig: string, logs: string[]): TimelineEvent[] {
   const events: TimelineEvent[] = [];
-  txs.forEach((tx, i) => {
-    for (const line of tx?.meta?.logMessages ?? []) {
+  {
+    for (const line of logs) {
       if (!line.startsWith("Program data: ")) continue;
       const data = Buffer.from(line.slice(14), "base64");
       if (data.length < 8 + 32 + 32 + 1 + 4 + 8 || !data.subarray(0, 8).equals(FROZEN_CHANGED)) continue;
@@ -127,13 +137,13 @@ async function solanaGuard() {
         kind: isFrozen ? "freeze" : "unfreeze",
         agentSlug: "solana",
         chain: "solana-devnet",
-        txHash: ok[i],
+        txHash: sig,
         reasonCode: data.readUInt32LE(73),
         ts: Number(data.readBigInt64LE(77)),
       });
     }
-  });
-  return { frozen, events, policy: policy.toBase58(), missing: !info };
+  }
+  return events;
 }
 
 async function cardanoPurchases() {
@@ -160,10 +170,50 @@ async function cardanoPurchases() {
   }));
 }
 
+/**
+ * Every viewer polls every 15 s, and public RPCs rate-limit. Each source is hit
+ * at most once per TTL; on failure the last good value is served and flagged.
+ */
+const TTL_MS = 20_000;
+const cache = new Map<string, { at: number; value: unknown; pending?: Promise<unknown> }>();
+
+async function throttled<T>(key: string, fn: () => Promise<T>): Promise<{ value: T; staleSince?: number; error?: string }> {
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < TTL_MS) return { value: hit.value as T };
+  try {
+    const pending = (hit?.pending as Promise<T> | undefined) ?? fn();
+    if (hit) hit.pending = pending;
+    else cache.set(key, { at: 0, value: undefined, pending });
+    const value = await pending;
+    cache.set(key, { at: Date.now(), value });
+    return { value };
+  } catch (e) {
+    const prev = cache.get(key);
+    if (prev) prev.pending = undefined;
+    if (prev && prev.at > 0) return { value: prev.value as T, staleSince: prev.at, error: errText(e) };
+    throw e;
+  }
+}
+
+const staleNote = (src: string, r: { staleSince?: number; error?: string }) =>
+  r.staleSince ? [`${src}: ${r.error}. Showing data from ${Math.round((Date.now() - r.staleSince) / 1000)} s ago.`] : [];
+
 export async function liveData(controls: ControlDef[]) {
   const errors: string[] = [];
   const notes: string[] = [];
-  const [evm, sol, ada] = await Promise.allSettled([sepoliaResults(controls), solanaGuard(), cardanoPurchases()]);
+  const [evmR, solR, adaR] = await Promise.allSettled([
+    throttled("sepolia", () => sepoliaResults(controls)),
+    throttled("solana", solanaGuard),
+    throttled("cardano", cardanoPurchases),
+  ]);
+  const unwrap = <T,>(src: string, r: PromiseSettledResult<{ value: T; staleSince?: number; error?: string }>): PromiseSettledResult<T> => {
+    if (r.status === "rejected") return r;
+    errors.push(...staleNote(src, r.value));
+    return { status: "fulfilled", value: r.value.value };
+  };
+  const evm = unwrap("Sepolia", evmR);
+  const sol = unwrap("Solana", solR);
+  const ada = unwrap("Cardano", adaR);
 
   const results = evm.status === "fulfilled" ? evm.value.results : [];
   if (evm.status === "fulfilled") {
