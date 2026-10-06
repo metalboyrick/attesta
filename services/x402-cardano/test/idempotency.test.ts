@@ -23,8 +23,10 @@ const PROBE = "addr_test1qqteey0t6whhsk04mdadq02m8m6004d8wsgl0vpnq26q7dgvanmxs7d
 
 let txs: { cbor: string; hash: string }[] = [];
 let settleMode: "success" | "pending" | "fail" = "success";
-// Mock Koios tx_status: which payment txs the seller sees on chain.
+// Mock Koios tx_info: which payment txs the seller sees on chain, and who
+// they pay. By default a landed tx pays the seller the 1 tADA price.
 const onChain = new Set<string>();
+const paysTo = new Map<string, string>();
 let settleCalls = 0;
 let payloadsCreated = 0;
 let nextTx = 0;
@@ -48,7 +50,7 @@ before(async () => {
   });
   txs = cbors.map(c => ({ cbor: c.cbor, hash: decodeCardanoTransaction(Buffer.from(c.cbor, "hex").toString("base64")).txHash }));
   assert.equal(txs[0].hash, cbors[0].tx_hash);
-  assert.ok(txs.length >= 4, "need 4 fixture txs");
+  assert.ok(txs.length >= 5, "need 5 fixture txs");
   txs.forEach(t => onChain.add(t.hash));
 
   const fac = express();
@@ -67,8 +69,12 @@ before(async () => {
       signers: { "cardano:*": [] },
     }),
   );
-  fac.post("/tx_status", (req, res) =>
-    res.json((req.body._tx_hashes as string[]).map(h => ({ tx_hash: h, num_confirmations: onChain.has(h) ? 3 : null }))),
+  fac.post("/tx_info", (req, res) =>
+    res.json(
+      (req.body._tx_hashes as string[])
+        .filter(h => onChain.has(h))
+        .map(h => ({ tx_hash: h, outputs: [{ payment_addr: { bech32: paysTo.get(h) ?? SELLER }, value: "1000000", asset_list: [] }] })),
+    ),
   );
   fac.post("/verify", (_req, res) => res.json({ isValid: true, payer: PROBE }));
   fac.post("/settle", (req, res) => {
@@ -232,5 +238,22 @@ test("a failed payment that never lands frees the nonce after the TTL", async ()
   await new Promise(r => setTimeout(r, 3500));
   const after = await fetch(url);
   assert.equal(after.status, 402, "after TTL with no tx on chain: a fresh quote");
+  settleMode = "success";
+});
+
+test("a landed tx that doesn't pay the seller never settles the nonce", async () => {
+  const pay = buyer();
+  nextTx = 4;
+  onChain.delete(txs[4].hash);
+  settleMode = "fail";
+  const url = `${sellerUrl}/attest/attesta-demo-agent-3?nonce=nonce-ffff-0006`;
+  const before = payloadsCreated;
+  assert.equal((await pay(url)).status, 402);
+
+  onChain.add(txs[4].hash);
+  paysTo.set(txs[4].hash, PROBE); // on chain, but the money went elsewhere
+  const retry = await fetch(url);
+  assert.equal(retry.status, 409, "not delivered: wrong payee");
+  assert.equal(payloadsCreated, before + 1);
   settleMode = "success";
 });

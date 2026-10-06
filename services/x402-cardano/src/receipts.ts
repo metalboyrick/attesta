@@ -30,6 +30,10 @@ export type Receipt = {
   agentId: string;
   nonce: string;
   txHash: string;
+  /** What the tx must pay, from the verified requirements. */
+  payTo?: string;
+  amount?: string;
+  asset?: string;
   status: "pending" | "settled";
   /** Response body served for this nonce (JSON text). */
   body?: string;
@@ -113,18 +117,44 @@ function txHashOf(payload: Record<string, unknown>): string | undefined {
   }
 }
 
-async function onChain(txHash: string): Promise<boolean> {
+type KoiosOut = { payment_addr: { bech32: string }; value: string; asset_list?: { policy_id: string; asset_name: string | null; quantity: string }[] };
+
+/**
+ * True when the tx is on chain and pays what the receipt expects: at least
+ * `amount` of `asset` to `payTo`. A receipt without expectations (older
+ * entries) only needs the tx on chain.
+ */
+async function paidOnChain(r: Receipt): Promise<boolean> {
   try {
-    const res = await fetch(`${KOIOS}/tx_status`, {
+    const res = await fetch(`${KOIOS}/tx_info`, {
       method: "POST",
       headers: { "content-type": "application/json", accept: "application/json" },
-      body: JSON.stringify({ _tx_hashes: [txHash] }),
+      body: JSON.stringify({ _tx_hashes: [r.txHash], _assets: true }),
     });
-    const rows = (await res.json()) as { num_confirmations: number | null }[];
-    return (rows[0]?.num_confirmations ?? 0) >= 1;
-  } catch {
+    const rows = (await res.json()) as { outputs: KoiosOut[] }[];
+    const tx = rows[0];
+    if (!tx) return false;
+    if (!r.payTo || !r.amount || !r.asset) return true;
+    let paid = 0n;
+    for (const out of tx.outputs) {
+      if (out.payment_addr.bech32 !== r.payTo) continue;
+      if (r.asset === "lovelace") paid += BigInt(out.value);
+      else
+        for (const a of out.asset_list ?? [])
+          if (`${a.policy_id}.${a.asset_name ?? ""}` === r.asset) paid += BigInt(a.quantity);
+    }
+    const ok = paid >= BigInt(r.amount);
+    if (!ok) log("payment_mismatch", { nonce: r.nonce, txHash: r.txHash, paid: paid.toString(), expected: r.amount, asset: r.asset });
+    return ok;
+  } catch (error) {
+    log("koios_error", { txHash: r.txHash, error: String(error) });
     return false;
   }
+}
+
+/** One JSON line per event; never includes payloads or keys. */
+export function log(event: string, fields: Record<string, unknown>) {
+  console.log(JSON.stringify({ ts: new Date().toISOString(), component: "receipts", event, ...fields }));
 }
 
 async function replay(res: Parameters<RequestHandler>[1], r: Receipt) {
@@ -158,11 +188,13 @@ export const replayMiddleware: RequestHandler = async (req, res, next) => {
     const r = state.receipts[key(agentId, nonce)];
     if (!r) return next();
     if (r.status === "pending") {
-      if (await onChain(r.txHash)) {
+      if (await paidOnChain(r)) {
+        log("settled_from_chain", { agentId: r.agentId, nonce: r.nonce, txHash: r.txHash });
         put({ ...r, status: "settled", updatedAt: Date.now() });
       } else if (Date.now() - r.createdAt > PENDING_TTL_MS) {
-        // Never landed and its validity window is long gone: free the nonce.
-        console.warn(`[receipts] ${r.nonce}: tx ${r.txHash} never landed; nonce freed`);
+        // Never landed (or never paid us) and its validity window is long
+        // gone: free the nonce.
+        log("nonce_freed", { agentId: r.agentId, nonce: r.nonce, txHash: r.txHash });
         drop(r);
         return next();
       }
@@ -198,7 +230,8 @@ export function registerReceiptHooks(server: x402ResourceServer) {
     }
     if (!existing) {
       const now = Date.now();
-      put({ ...k, txHash, status: "pending", createdAt: now, updatedAt: now });
+      const { payTo, amount, asset } = ctx.requirements;
+      put({ ...k, txHash, payTo, amount, asset, status: "pending", createdAt: now, updatedAt: now });
     }
   });
 
@@ -209,13 +242,19 @@ export function registerReceiptHooks(server: x402ResourceServer) {
     if (!r) return;
     const body = (ctx.transportContext as { responseBody?: Buffer }).responseBody;
     if (ctx.result.success) {
+      log("settled", { agentId: k.agentId, nonce: k.nonce, txHash: r.txHash });
       put({ ...r, status: "settled", body: body?.toString("utf8"), settle: { ...ctx.result }, updatedAt: Date.now() });
     } else {
       // Not settled, but the tx may still land. Keep the nonce pending so a
       // retry waits for it instead of paying again; save the body for replay.
-      console.warn(`[receipts] settle not confirmed for ${k.agentId} ${k.nonce}: ${ctx.result.errorReason ?? "unknown"}`);
+      log("settle_not_confirmed", { agentId: k.agentId, nonce: k.nonce, txHash: r.txHash, reason: ctx.result.errorReason });
       put({ ...r, body: body?.toString("utf8") ?? r.body, updatedAt: Date.now() });
     }
+  });
+
+  server.onVerifyFailure(async ctx => {
+    const k = requestKey(ctx.transportContext);
+    log("verify_failed", { agentId: k?.agentId, nonce: k?.nonce, error: ctx.error.message });
   });
 
   // Canceled before settle: the buyer never broadcasts and the facilitator
@@ -235,7 +274,7 @@ export function registerReceiptHooks(server: x402ResourceServer) {
     const k = requestKey(ctx.transportContext);
     const r = k && state.receipts[key(k.agentId, k.nonce)];
     const reason = (ctx.error as { errorReason?: string }).errorReason ?? ctx.error.message;
-    console.warn(`[receipts] settle failed for ${k ? `${k.agentId} ${k.nonce}` : "anonymous"}: ${reason}`);
+    log("settle_failed", { agentId: k?.agentId, nonce: k?.nonce, txHash: r ? r.txHash : undefined, reason });
     const body = (ctx.transportContext as { responseBody?: Buffer }).responseBody;
     if (r && body) put({ ...r, body: body.toString("utf8"), updatedAt: Date.now() });
   });
