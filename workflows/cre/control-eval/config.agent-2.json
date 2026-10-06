@@ -2,7 +2,7 @@
   "mode": "production",
   "schedule": "0 */5 * * * *",
   "chainSelectorName": "ethereum-testnet-sepolia",
-  "registryAddress": "0xbc675484a8c2c51174efb8b5369250eb8337750d",
+  "registryAddress": "0x48a80a9d7e319c29e5e309d7932c467810680935",
   "gasLimit": "1500000",
   "evmLogBlockTag": "latest",
   "agents": [
