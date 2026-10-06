@@ -17,6 +17,9 @@ export const decodePolicy = (dataB64: string): Snapshot => {
 	const spentToday = r.u64()
 	const dayIndex = r.i64()
 	const frozen = r.bool()
+	const n = r.u32()
+	const allowlist: string[] = []
+	for (let i = 0; i < n; i++) allowlist.push(r.pubkey())
 	return {
 		authority,
 		signer,
@@ -24,6 +27,7 @@ export const decodePolicy = (dataB64: string): Snapshot => {
 		spentToday: spentToday.toString(),
 		dayIndex: dayIndex.toString(),
 		frozen,
+		allowlist,
 	}
 }
 
@@ -39,7 +43,10 @@ export const decodeSpendEvents = (signature: string, logMessages: string[]): Pay
 		r.pubkey() // agent
 		const to = r.pubkey()
 		const amount = r.u64()
-		out.push({ to, amount: amount.toString(), ref: signature })
+		r.u64() // spent_today
+		r.u64() // daily_cap
+		const allowlisted = r.bool()
+		out.push({ to, amount: amount.toString(), ref: signature, flaggedOffList: !allowlisted })
 	}
 	return out
 }

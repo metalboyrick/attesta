@@ -9,6 +9,8 @@ export type Snapshot = {
 	spentToday: string
 	dayIndex: string
 	frozen: boolean
+	/** On-chain allowlist, when the chain keeps one (Solana AgentPolicy). */
+	allowlist?: string[]
 }
 
 export type Payment = {
@@ -16,6 +18,8 @@ export type Payment = {
 	amount: string
 	/** tx hash (EVM) or signature (Solana) */
 	ref: string
+	/** The chain itself flagged the payee as off-allowlist (Solana SpendEvent.allowlisted = false). */
+	flaggedOffList?: boolean
 }
 
 export type Evidence = {

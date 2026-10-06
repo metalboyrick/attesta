@@ -64,33 +64,52 @@ export const onCronTrigger = (runtime: Runtime<Config>): string => {
 	const nowSec = BigInt(Math.floor(runtime.now().getTime() / 1000))
 
 	const written: string[] = []
+	const skipped: string[] = []
 	const failures: string[] = []
 
 	for (const agent of config.agents) {
 		let evidence: Evidence
-		if (agent.kind === 'evm') {
-			evidence = collectEvm(runtime, evm, agent.wallet as Address, config.evmLogBlockTag)
-		} else if (agent.solana.mode === 'fixture') {
-			if (!agent.solana.fixture) throw new Error(`${agent.agentId}: fixture mode without fixture`)
-			evidence = fixtureSolana(agent.solana.fixture)
-		} else {
-			const apiKey = agent.solana.apiKeyHeader
-				? runtime.getSecret({ id: 'SOLANA_RPC_API_KEY' }).result().value
-				: ''
-			evidence = collectSolana(runtime, agent.solana, apiKey)
+		try {
+			evidence = collect(runtime, evm, config, agent)
+		} catch (e) {
+			// No evidence is not a FAIL: writing one would freeze an agent for our own outage. Skip and say so.
+			skipped.push(`${agent.agentId}: evidence unavailable: ${(e as Error).message}`)
+			continue
 		}
 		runtime.log(`${agent.agentId}: ${evidence.source} payments=${evidence.payments.length} at=${evidence.at}`)
 
-		for (const o of evaluateAll(evidence, agent.policy, nowSec)) {
+		const outcomes = evaluateAll(evidence, agent.policy, nowSec)
+		if (evidence.source.endsWith('-fixture')) {
+			// Fixture results never go on-chain, so no demo tx link can point at made-up data.
+			outcomes.forEach((o) => skipped.push(`${agent.agentId}/${o.controlId}=${o.pass ? 'PASS' : 'FAIL'} (fixture, not written)`))
+			continue
+		}
+		for (const o of outcomes) {
 			const tx = writeResult(runtime, evm, config, agent.agentId, o, nowSec)
 			if (tx.ok) written.push(`${agent.agentId}/${o.controlId}=${o.pass ? 'PASS' : 'FAIL'} ${tx.hash}`)
 			else failures.push(`${agent.agentId}/${o.controlId}: ${tx.error}`)
 		}
 	}
 
+	skipped.forEach((m) => runtime.log(`skipped ${m}`))
 	written.forEach((w) => runtime.log(`written ${w}`))
 	if (failures.length > 0) throw new Error(`write failures: ${failures.join('; ')}`)
-	return written.join('\n')
+	return [...written, ...skipped.map((m) => `skipped ${m}`)].join('\n')
+}
+
+const collect = (
+	runtime: Runtime<Config>,
+	evm: InstanceType<typeof cre.capabilities.EVMClient>,
+	config: Config,
+	agent: Config['agents'][number],
+): Evidence => {
+	if (agent.kind === 'evm') return collectEvm(runtime, evm, agent.wallet as Address, config.evmLogBlockTag)
+	if (agent.solana.mode === 'fixture') {
+		if (!agent.solana.fixture) throw new Error('fixture mode without fixture')
+		return fixtureSolana(agent.solana.fixture)
+	}
+	const apiKey = agent.solana.apiKeyHeader ? runtime.getSecret({ id: 'SOLANA_RPC_API_KEY' }).result().value : ''
+	return collectSolana(runtime, agent.solana, apiKey)
 }
 
 const writeResult = (

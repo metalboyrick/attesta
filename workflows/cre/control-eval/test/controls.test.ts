@@ -29,6 +29,7 @@ describe('solana decoders', () => {
 		expect(s.spentToday).toBe('3')
 		expect(s.dayIndex).toBe(DAY.toString())
 		expect(s.frozen).toBe(false)
+		expect(s.allowlist).toEqual([base58Encode(VENDOR)])
 	})
 	test('rejects non-policy account', () => {
 		expect(() => decodePolicy(btoa('nope-nope-nope'))).toThrow()
@@ -39,7 +40,7 @@ describe('solana decoders', () => {
 			spendLine(STRANGER, 7n, 7n, 10n, false, NOW),
 			'Program data: AAAAAAAAAAA=',
 		])
-		expect(p).toEqual([{ to: base58Encode(STRANGER), amount: '7', ref: 'sig' }])
+		expect(p).toEqual([{ to: base58Encode(STRANGER), amount: '7', ref: 'sig', flaggedOffList: true }])
 	})
 })
 
@@ -87,6 +88,18 @@ describe('controls', () => {
 	test('CPTY EVM addresses compare case-insensitively', () => {
 		const p = { ...policy, allowlist: ['0xAbC0000000000000000000000000000000000001'] }
 		expect(evalCounterparties(ev({}, [{ to: '0xabc0000000000000000000000000000000000001', amount: '1', ref: 'a' }]), p).pass).toBe(true)
+	})
+	test('CPTY falls back to on-chain allowlist when policy of record has none', () => {
+		const p = { ...policy, allowlist: [] }
+		const ok = ev({ allowlist: [base58Encode(VENDOR)] }, [{ to: base58Encode(VENDOR), amount: '1', ref: 'a' }])
+		expect(evalCounterparties(ok, p).pass).toBe(true)
+		expect(JSON.parse(evalCounterparties(ok, p).evidence).allowlistSource).toBe('on-chain')
+		const bad = ev({ allowlist: [base58Encode(VENDOR)] }, [{ to: base58Encode(STRANGER), amount: '1', ref: 'b' }])
+		expect(evalCounterparties(bad, p).pass).toBe(false)
+	})
+	test('CPTY fails when the chain flagged the payee, even if config allows it', () => {
+		const e = ev({}, [{ to: base58Encode(VENDOR), amount: '1', ref: 'a', flaggedOffList: true }])
+		expect(evalCounterparties(e, policy).pass).toBe(false)
 	})
 	test('KEY fails on signer or authority change', () => {
 		expect(evalKey(ev(), policy).pass).toBe(true)

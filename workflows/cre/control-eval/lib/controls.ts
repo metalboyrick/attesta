@@ -5,6 +5,7 @@ export const SECONDS_PER_DAY = 86_400n
 export type AgentPolicyOfRecord = {
 	/** Cap the agent was approved for, in wei or lamports. The on-chain cap must not exceed it. */
 	approvedDailyCap: string
+	/** Empty = use the allowlist the chain keeps (Solana AgentPolicy). */
 	allowlist: string[]
 	registeredSigner: string
 	registeredAuthority: string
@@ -48,7 +49,9 @@ export const evalSpend = (ev: Evidence, p: AgentPolicyOfRecord, nowSec: bigint):
 
 /** ATT-CPTY-02: every payment in the observed window went to an allowlisted counterparty. */
 export const evalCounterparties = (ev: Evidence, p: AgentPolicyOfRecord): ControlOutcome => {
-	const offList = ev.payments.filter((x) => !p.allowlist.some((a) => sameKey(a, x.to)))
+	const fromRecord = p.allowlist.length > 0
+	const allowlist = fromRecord ? p.allowlist : (ev.snapshot.allowlist ?? [])
+	const offList = ev.payments.filter((x) => x.flaggedOffList || !allowlist.some((a) => sameKey(a, x.to)))
 	return {
 		controlId: 'ATT-CPTY-02',
 		pass: offList.length === 0,
@@ -56,6 +59,8 @@ export const evalCounterparties = (ev: Evidence, p: AgentPolicyOfRecord): Contro
 			control: 'ATT-CPTY-02',
 			source: ev.source,
 			at: ev.at,
+			allowlistSource: fromRecord ? 'policy-of-record' : 'on-chain',
+			allowlist,
 			paymentsSeen: ev.payments.length,
 			offAllowlist: offList,
 			refs: ev.payments.map((x) => x.ref),
