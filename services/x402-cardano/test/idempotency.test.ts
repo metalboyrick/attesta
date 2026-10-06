@@ -22,7 +22,9 @@ const SELLER = "addr_test1qztvnhavscfaupuwy824jem5z8dxavkzz6ukg4xyzls3gn2mejfgg4
 const PROBE = "addr_test1qqteey0t6whhsk04mdadq02m8m6004d8wsgl0vpnq26q7dgvanmxs7dpt5rkyu2rfcl2qnx5zwvfa87rvvm6t3zug5xq4p5f40";
 
 let txs: { cbor: string; hash: string }[] = [];
-let settleMode: "success" | "pending" = "success";
+let settleMode: "success" | "pending" | "fail" = "success";
+// Mock Koios tx_status: which payment txs the seller sees on chain.
+const onChain = new Set<string>();
 let settleCalls = 0;
 let payloadsCreated = 0;
 let nextTx = 0;
@@ -40,12 +42,14 @@ async function koios<T>(path: string, body: unknown): Promise<T> {
 }
 
 before(async () => {
-  const recent = await koios<{ tx_hash: string }[]>("/address_txs?limit=3", { _addresses: [PROBE] });
+  const recent = await koios<{ tx_hash: string }[]>("/address_txs?limit=5", { _addresses: [PROBE] });
   const cbors = await koios<{ tx_hash: string; cbor: string }[]>("/tx_cbor", {
     _tx_hashes: recent.map(t => t.tx_hash),
   });
   txs = cbors.map(c => ({ cbor: c.cbor, hash: decodeCardanoTransaction(Buffer.from(c.cbor, "hex").toString("base64")).txHash }));
   assert.equal(txs[0].hash, cbors[0].tx_hash);
+  assert.ok(txs.length >= 4, "need 4 fixture txs");
+  txs.forEach(t => onChain.add(t.hash));
 
   const fac = express();
   fac.use(express.json({ limit: "2mb" }));
@@ -63,11 +67,19 @@ before(async () => {
       signers: { "cardano:*": [] },
     }),
   );
+  fac.post("/tx_status", (req, res) =>
+    res.json((req.body._tx_hashes as string[]).map(h => ({ tx_hash: h, num_confirmations: onChain.has(h) ? 3 : null }))),
+  );
   fac.post("/verify", (_req, res) => res.json({ isValid: true, payer: PROBE }));
   fac.post("/settle", (req, res) => {
     settleCalls += 1;
     const tx = req.body.paymentPayload.payload.transaction as string;
     const hash = decodeCardanoTransaction(tx).txHash;
+    if (settleMode === "fail") {
+      // Facilitator broadcast the tx, then reported a non-pending failure
+      // (as seen live: buyer got 402, tx still landed).
+      return res.json({ success: false, errorReason: "exact_cardano_settlement_failed", transaction: hash, network: "cardano:preprod" });
+    }
     if (settleMode === "pending") {
       return res.json({ success: false, errorReason: "settlement_pending", transaction: hash, network: "cardano:preprod" });
     }
@@ -89,6 +101,8 @@ before(async () => {
       SELLER_PORT: String(port),
       FACILITATOR_URL: `http://localhost:${facPort}`,
       RECEIPTS_FILE: join(mkdtempSync(join(tmpdir(), "attesta-receipts-")), "receipts.json"),
+      KOIOS_BASE_URL: `http://localhost:${facPort}`,
+      RECEIPTS_PENDING_TTL_MS: "3000",
       ATTESTA_CARDANO_SECRETS: "/nonexistent",
       ATTESTA_REGISTRY_ADDRESS: "",
       ATTESTA_STUB: "1",
@@ -178,4 +192,45 @@ test("a payment left pending is picked up from chain on retry, not paid twice", 
 test("bad nonce format is refused", async () => {
   const res = await fetch(`${sellerUrl}/attest/x?nonce=a`);
   assert.equal(res.status, 400);
+});
+
+test("settle reported failed but the tx landed: retry replays, no second payment", async () => {
+  const pay = buyer();
+  nextTx = 2;
+  onChain.delete(txs[2].hash);
+  settleMode = "fail";
+  const url = `${sellerUrl}/attest/attesta-demo-agent-2?nonce=nonce-dddd-0004`;
+  const before = payloadsCreated;
+
+  const first = await pay(url);
+  assert.equal(first.status, 402, "buyer is told the payment failed");
+  assert.equal(payloadsCreated, before + 1);
+
+  // Not on chain yet: retry must wait (409), never ask for a new payment.
+  const waiting = await fetch(url);
+  assert.equal(waiting.status, 409);
+
+  onChain.add(txs[2].hash);
+  settleMode = "success";
+  const retry = await pay(url);
+  assert.equal(retry.status, 200);
+  assert.equal(retry.headers.get("x-attesta-replay"), "1");
+  const body = JSON.parse(await retry.text());
+  assert.equal(body.agentId, "attesta-demo-agent-2", "replay serves a real answer, not {}");
+  assert.ok(retry.headers.get("payment-response"), "receipt names the tx");
+  assert.equal(payloadsCreated, before + 1, "no second payment signed");
+});
+
+test("a failed payment that never lands frees the nonce after the TTL", async () => {
+  const pay = buyer();
+  nextTx = 3;
+  onChain.delete(txs[3].hash);
+  settleMode = "fail";
+  const url = `${sellerUrl}/attest/attesta-demo-agent-1?nonce=nonce-eeee-0005`;
+  assert.equal((await pay(url)).status, 402);
+  assert.equal((await fetch(url)).status, 409, "inside TTL: wait");
+  await new Promise(r => setTimeout(r, 3500));
+  const after = await fetch(url);
+  assert.equal(after.status, 402, "after TTL with no tx on chain: a fresh quote");
+  settleMode = "success";
 });

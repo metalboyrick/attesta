@@ -67,7 +67,9 @@ Each buyer request carries a nonce: `GET /attest/:agentId?nonce=<8-128 chars of 
 - **One tx, one request.** A signed transaction that already paid for one `(agentId, nonce)` is refused for any other one before settlement. The tx hash is decoded from the payment itself.
 - **Failed payment.** If the payment never reached the chain, the nonce is freed for a fresh try.
 
-The agentId and nonce come from the request the server saw, not from the payment payload. Receipts persist to `RECEIPTS_FILE` (default `.data/receipts.json`), so a restart keeps them. It's a single-process store; replicas would need a shared one.
+The agentId and nonce come from the request the server saw, not from the payment payload. Receipts persist to `RECEIPTS_FILE` (default `.data/receipts.json`; `/data/receipts.json` in Docker, so mount a volume there), so a restart or redeploy keeps them. It's a single-process store; replicas would need a shared one.
+
+If settle fails for any reason after the facilitator may have broadcast the tx, the nonce stays pending: retries get 409 until the tx is seen on chain (then they replay the receipt), and the nonce is freed only if the tx still isn't on chain after `RECEIPTS_PENDING_TTL_MS` (default 15 minutes, well past the tx validity window). Settle failures are logged. We found this case live on 6 Oct: the buyer got a 402 while its payment `da2505fd…` landed; the earlier code freed the nonce, so a retry would have charged twice. `test/idempotency.test.ts` now reproduces it.
 
 The buyer generates a nonce per run and prints it. `BUYER_NONCE=<nonce> npm run buyer -- <agentId>` replays it. `scripts/retry-demo.sh [agentId]` runs one paid request and two retries with the same nonce, and prints the buyer balance before and after.
 

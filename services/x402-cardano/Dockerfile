@@ -8,7 +8,10 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY x402-cardano/tsconfig.json ./
 COPY x402-cardano/src ./src
 COPY shared /app/shared
-ENV NODE_ENV=production SELLER_PORT=4021 TRUST_PROXY=1 RECEIPTS_FILE=/tmp/attesta/receipts.json
+# Receipts must survive container replacement: mount a volume at /data.
+RUN mkdir -p /data && chown node:node /data
+VOLUME /data
+ENV NODE_ENV=production SELLER_PORT=4021 TRUST_PROXY=1 RECEIPTS_FILE=/data/receipts.json
 EXPOSE 4021
 USER node
 CMD ["npx", "tsx", "src/seller.ts"]

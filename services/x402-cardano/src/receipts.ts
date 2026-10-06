@@ -5,9 +5,12 @@
  *
  * - A settled nonce replays its stored response and PAYMENT-RESPONSE header
  *   with no new payment.
- * - A nonce whose payment is still settling answers 409, so the buyer's x402
- *   client does not sign a second payment. Once the tx shows up on chain
- *   (checked through Koios) the nonce flips to settled.
+ * - A nonce whose payment is still settling, or whose settle was reported as
+ *   failed after the facilitator may already have broadcast it, answers 409,
+ *   so the buyer's x402 client does not sign a second payment. Once the tx
+ *   shows up on chain (checked through Koios) the nonce flips to settled. Only
+ *   if the tx is still not on chain after RECEIPTS_PENDING_TTL_MS (default 15
+ *   min, well past the tx's validity window) is the nonce freed.
  * - One Cardano transaction pays for exactly one nonce. Presenting the same
  *   signed tx for another nonce or agent is refused before settlement.
  *
@@ -40,6 +43,14 @@ type State = { receipts: Record<string, Receipt>; txToKey: Record<string, string
 const NONCE = /^[A-Za-z0-9_-]{8,128}$/;
 const KOIOS = process.env.KOIOS_BASE_URL ?? "https://preprod.koios.rest/api/v1";
 const file = process.env.RECEIPTS_FILE ?? ".data/receipts.json";
+const PENDING_TTL_MS = Number(process.env.RECEIPTS_PENDING_TTL_MS ?? 15 * 60_000);
+const NETWORK = "cardano:preprod";
+
+/** Builds the response body for a paid nonce whose body was never stored. */
+let lateBody: ((agentId: string) => Promise<string>) | undefined;
+export function setLateBodyProvider(fn: (agentId: string) => Promise<string>) {
+  lateBody = fn;
+}
 
 const key = (agentId: string, nonce: string) => `${agentId}\n${nonce}`;
 
@@ -116,10 +127,18 @@ async function onChain(txHash: string): Promise<boolean> {
   }
 }
 
-function replay(res: Parameters<RequestHandler>[1], r: Receipt) {
-  if (r.settle) res.setHeader("PAYMENT-RESPONSE", encodePaymentResponseHeader(r.settle));
+async function replay(res: Parameters<RequestHandler>[1], r: Receipt) {
+  let current = r;
+  if (current.body === undefined && lateBody) {
+    // Settle failed before the body was kept, but the payment landed: answer
+    // now, store it, and serve the same body on every later replay.
+    current = { ...current, body: await lateBody(current.agentId), updatedAt: Date.now() };
+    put(current);
+  }
+  const settle = current.settle ?? { success: true, transaction: current.txHash, network: NETWORK };
+  res.setHeader("PAYMENT-RESPONSE", encodePaymentResponseHeader(settle as SettleResponse));
   res.setHeader("X-Attesta-Replay", "1");
-  res.status(200).type("application/json").send(r.body ?? "{}");
+  res.status(200).type("application/json").send(current.body ?? "{}");
 }
 
 /**
@@ -138,11 +157,18 @@ export const replayMiddleware: RequestHandler = async (req, res, next) => {
     if (agentId === undefined) return res.status(400).json({ error: "malformed agentId" });
     const r = state.receipts[key(agentId, nonce)];
     if (!r) return next();
-    if (r.status === "pending" && (await onChain(r.txHash))) {
-      put({ ...r, status: "settled", updatedAt: Date.now() });
+    if (r.status === "pending") {
+      if (await onChain(r.txHash)) {
+        put({ ...r, status: "settled", updatedAt: Date.now() });
+      } else if (Date.now() - r.createdAt > PENDING_TTL_MS) {
+        // Never landed and its validity window is long gone: free the nonce.
+        console.warn(`[receipts] ${r.nonce}: tx ${r.txHash} never landed; nonce freed`);
+        drop(r);
+        return next();
+      }
     }
     const current = state.receipts[key(r.agentId, r.nonce)];
-    if (current?.status === "settled") return replay(res, current);
+    if (current?.status === "settled") return await replay(res, current);
     res.setHeader("Retry-After", "15");
     return res.status(409).json({ error: "settlement_in_progress", txHash: r.txHash });
   } catch (error) {
@@ -185,27 +211,31 @@ export function registerReceiptHooks(server: x402ResourceServer) {
     if (ctx.result.success) {
       put({ ...r, status: "settled", body: body?.toString("utf8"), settle: { ...ctx.result }, updatedAt: Date.now() });
     } else {
-      // settlement_pending: the tx may still land. Keep the nonce pending so a
+      // Not settled, but the tx may still land. Keep the nonce pending so a
       // retry waits for it instead of paying again; save the body for replay.
+      console.warn(`[receipts] settle not confirmed for ${k.agentId} ${k.nonce}: ${ctx.result.errorReason ?? "unknown"}`);
       put({ ...r, body: body?.toString("utf8") ?? r.body, updatedAt: Date.now() });
     }
   });
 
-  // A payment that never reached the chain frees its nonce for a fresh try.
-  const release = async (ctx: { transportContext?: unknown; paymentPayload: { payload: unknown } }) => {
+  // Canceled before settle: the buyer never broadcasts and the facilitator
+  // never got the tx, so it can't land. Free the nonce for a fresh try.
+  server.onVerifiedPaymentCanceled(async ctx => {
     const k = requestKey(ctx.transportContext);
     const txHash = txHashOf(ctx.paymentPayload.payload as Record<string, unknown>);
     if (!k || !txHash) return;
     const r = state.receipts[key(k.agentId, k.nonce)];
-    if (r && r.txHash === txHash && r.status === "pending" && !(await onChain(txHash))) drop(r);
-  };
-  server.onVerifiedPaymentCanceled(async ctx => release(ctx as never));
+    if (r && r.txHash === txHash && r.status === "pending") drop(r);
+  });
+
+  // Settle failed for any reason: the facilitator may already have broadcast
+  // the tx, so never free the nonce here. Keep it pending with the body; the
+  // replay path settles it from chain or frees it after the TTL.
   server.onSettleFailure(async ctx => {
-    const reason = (ctx.error as { errorReason?: string }).errorReason;
-    if (reason !== "settlement_pending") return release(ctx as never);
-    // Still settling: keep the nonce pending and save the body for replay.
     const k = requestKey(ctx.transportContext);
     const r = k && state.receipts[key(k.agentId, k.nonce)];
+    const reason = (ctx.error as { errorReason?: string }).errorReason ?? ctx.error.message;
+    console.warn(`[receipts] settle failed for ${k ? `${k.agentId} ${k.nonce}` : "anonymous"}: ${reason}`);
     const body = (ctx.transportContext as { responseBody?: Buffer }).responseBody;
     if (r && body) put({ ...r, body: body.toString("utf8"), updatedAt: Date.now() });
   });

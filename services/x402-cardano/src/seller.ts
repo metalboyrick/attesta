@@ -13,7 +13,7 @@ import { ExactCardanoScheme } from "@x402/cardano/exact/server";
 import { NETWORK } from "./env.js";
 import { attestationAvailable, attestationFor, attestationSource } from "./attestation.js";
 import { price, priceLabel } from "./pricing.js";
-import { registerReceiptHooks, replayMiddleware, safeDecode } from "./receipts.js";
+import { registerReceiptHooks, replayMiddleware, safeDecode, setLateBodyProvider } from "./receipts.js";
 
 const payTo = process.env.SELLER_ADDRESS;
 const facilitatorUrl =
@@ -34,6 +34,7 @@ const extra =
 const resourceServer = new x402ResourceServer(new HTTPFacilitatorClient({ url: facilitatorUrl }));
 resourceServer.register(NETWORK, new ExactCardanoScheme());
 registerReceiptHooks(resourceServer);
+setLateBodyProvider(async agentId => JSON.stringify(await attestationFor(agentId)));
 
 const app = express();
 // Behind a TLS proxy (Caddy, Cloudflare tunnel) so the 402's resource URL
