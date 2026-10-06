@@ -58,7 +58,7 @@ export function agentKey(agentId: string): Hex {
 // The CRE workflow (workflows/cre/control-eval) writes keccak256(label) as
 // the controlId, so known labels are matched back by hash.
 const knownControls = new Map(
-  (process.env.ATTESTA_CONTROL_IDS ?? "ATT-SPEND-01,ATT-CPTY-02,ATT-KEY-03")
+  (process.env.ATTESTA_CONTROL_IDS ?? "ATT-SPEND-01,ATT-CPTY-02,ATT-KEY-03,ATT-TXLIM-04,ATT-FRZ-05,ATT-CHG-06,ATT-LOG-07,ATT-HITL-08")
     .split(",")
     .map(label => label.trim())
     .filter(Boolean)
