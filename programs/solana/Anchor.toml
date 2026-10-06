@@ -1,0 +1,22 @@
+[toolchain]
+anchor_version = "1.0.0"
+package_manager = "pnpm"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+attesta_guard = "2ppMVjwBs8dqNppcJctfTJaVb3rtfFFe5cDmJyxCGuSW"
+
+[programs.devnet]
+attesta_guard = "2ppMVjwBs8dqNppcJctfTJaVb3rtfFFe5cDmJyxCGuSW"
+
+[provider]
+cluster = "devnet"
+wallet = "~/.attesta-secrets/solana-deployer.json"
+
+[scripts]
+test = "cargo test"
+
+[hooks]
