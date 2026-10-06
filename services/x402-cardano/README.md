@@ -73,6 +73,10 @@ docker run --rm -p 127.0.0.1:4021:4021 -e SELLER_ADDRESS=addr_test1... attesta-x
 
 `TRUST_PROXY=1` is set in the image so that behind Caddy or a Cloudflare tunnel the 402's resource URL says `https`.
 
+## Public HTTPS (option B, not live)
+
+`SELLER_ADDRESS=addr_test1... scripts/tunnel.sh` builds the image, runs the seller on `127.0.0.1:4021`, and opens a Cloudflare quick tunnel. It prints a random `https://*.trycloudflare.com` URL that changes on every start. Ctrl-C stops both. Nothing is exposed until someone runs it. The hosting choice is still open.
+
 ## Proof on preprod
 
 | Item | Value |
