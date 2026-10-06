@@ -10,7 +10,8 @@ export AGENT_SIGNER=$(jq -r '.[0].address' "$S/sepolia-agent.json")
 export VENDOR=$(jq -r '.[0].address' "$S/sepolia-vendor.json")
 
 cd "$here/../../contracts/evm"
-forge script script/Deploy.s.sol --rpc-url "$RPC" --private-key "$pk" --broadcast
+# Sepolia charges ~5x what forge's local EVM estimates for contract creation (node estimate 4.7M gas for the registry on 6 Oct 2026), hence the multiplier.
+forge script script/Deploy.s.sol --rpc-url "$RPC" --private-key "$pk" --broadcast --gas-estimate-multiplier 700
 run=broadcast/Deploy.s.sol/11155111/run-latest.json
 reg=$(jq -r '[.transactions[] | select(.contractName=="AttestationRegistry")][0].contractAddress' "$run")
 wallet=$(jq -r '[.transactions[] | select(.contractName=="AgentWallet")][0].contractAddress' "$run")

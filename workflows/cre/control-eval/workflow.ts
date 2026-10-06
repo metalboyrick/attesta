@@ -201,7 +201,8 @@ const writeResult = (
 		})
 		.result()
 
-	const hash = bytesToHex(write.txHash || new Uint8Array(32))
+	// Without --broadcast the simulator returns no tx hash. Never print a made-up zero hash as if it were a tx.
+	const hash = write.txHash && write.txHash.some((b) => b !== 0) ? bytesToHex(write.txHash) : 'no-tx (simulate without --broadcast)'
 	if (write.txStatus !== TxStatus.SUCCESS) return { ok: false, error: `tx ${write.errorMessage || write.txStatus}` }
 	// The mock forwarder does not revert when onReport reverts, so check the receiver status explicitly.
 	if (write.receiverContractExecutionStatus !== undefined && write.receiverContractExecutionStatus !== 0) {

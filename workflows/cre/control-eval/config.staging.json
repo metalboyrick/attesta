@@ -2,19 +2,21 @@
   "mode": "production",
   "schedule": "0 */5 * * * *",
   "chainSelectorName": "ethereum-testnet-sepolia",
-  "registryAddress": "0x0000000000000000000000000000000000000000",
-  "gasLimit": "500000",
+  "registryAddress": "0xbc675484a8c2c51174efb8b5369250eb8337750d",
+  "gasLimit": "1500000",
   "evmLogBlockTag": "latest",
   "agents": [
     {
       "agentId": "attesta-demo-agent-1",
       "kind": "evm",
-      "wallet": "0x0000000000000000000000000000000000000000",
+      "wallet": "0xdd181c02a2979d13f4124dcd628cfe96c3248f2f",
       "policy": {
         "approvedDailyCap": "10000000000000000",
-        "allowlist": [],
-        "registeredSigner": "0x0000000000000000000000000000000000000000",
-        "registeredAuthority": "0x0000000000000000000000000000000000000000"
+        "allowlist": [
+          "0x88C6a1229c9d287d4360684F05d7fEa73a453fAf"
+        ],
+        "registeredSigner": "0x779cFA39339f96E35123a54d64B7D1C9C928ddd8",
+        "registeredAuthority": "0x6B440c232e9d4cD9C9B28777bB87877B501489A6"
       }
     },
     {
