@@ -34,6 +34,9 @@ const resourceServer = new x402ResourceServer(new HTTPFacilitatorClient({ url: f
 resourceServer.register(NETWORK, new ExactCardanoScheme());
 
 const app = express();
+// Behind a TLS proxy (Caddy, Cloudflare tunnel) so the 402's resource URL
+// says https, not the proxy hop's http.
+if (process.env.TRUST_PROXY) app.set("trust proxy", true);
 
 app.use(
   paymentMiddleware(

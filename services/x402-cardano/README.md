@@ -57,6 +57,22 @@ On Koios the facilitator cannot read confirmation depth, so it advertises `l1Con
 - **Attestation source.** With `ATTESTA_REGISTRY_ADDRESS` and `SEPOLIA_RPC_URL` set, `src/attestation.ts` reads `contracts/evm/src/AttestationRegistry.sol` through viem: `isCompliant`, `getControls`, then `getResult` per control. `source` is then `sepolia:<address>`. Without them it returns stub data and `source` is `"stub"`. The agentId in the URL maps to the registry's `bytes32` key by keccak256 of the UTF-8 string (`AGENT_ID_ENCODING=utf8` switches to right-padded bytes); a raw `0x` 32-byte hex id passes through. This matches `id32` in `workflows/cre/control-eval/workflow.ts`. That workflow also hashes control ids, so the seller maps hashes back to labels listed in `ATTESTA_CONTROL_IDS` (default `ATT-SPEND-01,ATT-CPTY-02,ATT-KEY-03`); ids stored as padded ASCII also read back as text, and anything else stays hex.
 - **Registry failure.** If the registry read throws, the seller answers 502 and x402 cancels settlement, so the buyer is not charged. The read path was tested against the compiled contract on a local anvil node; it has not run against a Sepolia deployment yet.
 
+## Spend collector (monitored agent #3)
+
+`npm run collect -- <agentId> <address> [sinceUnixSeconds]` reads a preprod wallet's transactions from Koios and prints `SpendRecord[]` (type in `services/shared/spend-record.ts`, shared with the EVM and Solana collectors). A transaction counts when one of its inputs is from the agent address. Each output to another address becomes one record per asset; change and fees are skipped. Defaults: `AGENT_ID` (else `attesta-demo-agent-3`) and `AGENT_ADDRESS` (else the buyer wallet).
+
+## Docker
+
+The image runs the seller only and holds no keys. Build from `services/` so the shared type is in context:
+
+```sh
+cd services
+docker build -f x402-cardano/Dockerfile -t attesta-x402-cardano .
+docker run --rm -p 127.0.0.1:4021:4021 -e SELLER_ADDRESS=addr_test1... attesta-x402-cardano
+```
+
+`TRUST_PROXY=1` is set in the image so that behind Caddy or a Cloudflare tunnel the 402's resource URL says `https`.
+
 ## Proof on preprod
 
 | Item | Value |
