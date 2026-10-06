@@ -21,17 +21,22 @@ attesta:freeze:<agentId>:<controlId>:sepolia:<sourceTxHash>
 
 So the Solana transaction points back to the Sepolia `ControlResult` that caused it. The relayer also prints one JSON line per action with `sourceTxUrl` (Etherscan) and `solanaSigUrl` (Solana Explorer).
 
-## Idempotency
+## Reliability
 
-- Each log is handled once. The state file keeps a block cursor and the `txHash:logIndex` keys already processed.
-- Before writing, the relayer reads the policy account and skips if `frozen` already matches the target.
-- If a Solana call fails, the cursor does not move past that block range, so the next poll retries it.
+- **Backfill.** With no saved state for the configured registry, the relayer starts at `REGISTRY_DEPLOY_BLOCK` and refuses to start without it. It never starts at head, so FAILs written while it was down still freeze. State is tied to the registry address. A redeployed registry (new `ATTESTA_REGISTRY_ADDRESS`) starts fresh from its own deploy block.
+- **Level trigger.** Every tick, for each mapped agent, it reads `failingCount` from the registry. If that is above 0 and the policy is not frozen, it freezes with a `attesta:reconcile:...` memo. Logs are still used, to link each freeze to its source tx.
+- **No head-of-line blocking.** Each log is handled in its own try/catch. A log that fails goes to `pending` and is retried on later ticks while the cursor moves on. After `RELAYER_MAX_ATTEMPTS` (default 5) it moves to `dead` and a `dead_letter` line is logged. Reconcile still freezes that agent once the cause is fixed.
+- **Confirmations.** Logs are only acted on `RELAYER_CONFIRMATIONS` blocks (default 2) behind head, to avoid a freeze from a reorged log.
+- **Idempotent.** Each log key (`txHash:logIndex`) is handled once. The relayer also reads the policy and skips when `frozen` already matches.
+
+Unit tests for all of the above run on an in-memory fake chain: `npm test` (8 tests).
 
 ## Run
 
 ```bash
-cp .env.example .env    # fill ATTESTA_REGISTRY_ADDRESS, RELAYER_FROM_BLOCK
+cp .env.example .env    # fill ATTESTA_REGISTRY_ADDRESS, REGISTRY_DEPLOY_BLOCK
 npm install
+npm test
 npm run relay
 npm run collect -- attesta-demo-agent-2 2pVzN7yA5qS6ozXVpxkwiSQhHy9362L9mrHwbVSBJfmM
 ```

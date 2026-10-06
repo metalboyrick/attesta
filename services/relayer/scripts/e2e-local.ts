@@ -97,6 +97,7 @@ async function main() {
     RELAYER_FROM_BLOCK: fromBlock.toString(),
     RELAYER_STATE_FILE: stateFile,
     RELAYER_ONCE: "1",
+    RELAYER_CONFIRMATIONS: "0",
     AUTO_UNFREEZE: "1",
   });
 

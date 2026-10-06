@@ -11,5 +11,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src", "scripts", "../shared", "../../programs/solana/idl"]
+  "include": ["src", "scripts", "test", "../shared", "../../programs/solana/idl"]
 }
