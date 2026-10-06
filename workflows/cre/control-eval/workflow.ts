@@ -163,10 +163,10 @@ const collect = (
 		case 'solana': {
 			if (agent.solana.mode === 'fixture') {
 				if (!agent.solana.fixture) throw new Error('fixture mode without fixture')
-				return { evidence: fixtureSolana(agent.solana.fixture), fixture: true }
+				return { evidence: fixtureSolana(agent.solana.fixture, nowSec), fixture: true }
 			}
 			const apiKey = agent.solana.apiKeyHeader ? runtime.getSecret({ id: 'SOLANA_RPC_API_KEY' }).result().value : ''
-			return { evidence: collectSolana(runtime, agent.solana, apiKey), fixture: false }
+			return { evidence: collectSolana(runtime, agent.solana, apiKey, nowSec), fixture: false }
 		}
 		case 'cardano': {
 			const dayStart = (nowSec / SECONDS_PER_DAY) * SECONDS_PER_DAY

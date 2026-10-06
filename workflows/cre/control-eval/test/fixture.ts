@@ -45,6 +45,11 @@ export const policyB64 = (cap: bigint, spent: bigint, day: bigint, allowlist: Ui
 export const spendLine = (to: Uint8Array, amount: bigint, spent: bigint, cap: bigint, allowlisted: boolean, ts: bigint) =>
 	`Program data: ${b64(cat(SPEND_EVENT_DISC, AGENT, to, u64(amount), u64(spent), u64(cap), [allowlisted ? 1 : 0], u64(ts)))}`
 
+export const FROZEN_CHANGED_DISC = [223, 64, 57, 47, 168, 188, 36, 90] as const
+export const u32 = (n: number) => [n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff]
+export const frozenLine = (frozen: boolean, ts: bigint) =>
+	`Program data: ${b64(cat(FROZEN_CHANGED_DISC, AGENT, AUTHORITY, [frozen ? 1 : 0], u32(0), u64(ts)))}`
+
 if (import.meta.main) {
 	const now = BigInt(Math.floor(Date.now() / 1000))
 	const day = now / 86400n

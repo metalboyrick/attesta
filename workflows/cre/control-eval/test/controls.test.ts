@@ -3,7 +3,7 @@ import { base58Encode, base64Decode } from '../lib/codec'
 import { evalCounterparties, evalKey, evalSpend, evaluateAll } from '../lib/controls'
 import { buildSolanaEvidence, decodePolicy, decodeSpendEvents } from '../lib/solana'
 import type { Evidence } from '../lib/types'
-import { AGENT, AUTHORITY, policyB64, spendLine, STRANGER, VENDOR } from './fixture'
+import { AGENT, AUTHORITY, frozenLine, policyB64, spendLine, STRANGER, VENDOR } from './fixture'
 
 const NOW = 1_791_263_323n
 const DAY = NOW / 86_400n
@@ -40,7 +40,7 @@ describe('solana decoders', () => {
 			spendLine(STRANGER, 7n, 7n, 10n, false, NOW),
 			'Program data: AAAAAAAAAAA=',
 		])
-		expect(p).toEqual([{ to: base58Encode(STRANGER), amount: '7', ref: 'sig', flaggedOffList: true }])
+		expect(p).toEqual([{ to: base58Encode(STRANGER), amount: '7', ref: 'sig', flaggedOffList: true, ts: NOW.toString() }])
 	})
 })
 
@@ -107,12 +107,79 @@ describe('controls', () => {
 		expect(evalKey(ev({ authority: base58Encode(STRANGER) }), policy).pass).toBe(false)
 	})
 	test('end to end fixture: CPTY fails only', () => {
-		const e = buildSolanaEvidence(policyB64(1000n, 400n, DAY, [VENDOR]), [
-			{ signature: 's2', logMessages: [spendLine(STRANGER, 100n, 400n, 1000n, false, NOW)] },
-			{ signature: 's1', logMessages: [spendLine(VENDOR, 300n, 300n, 1000n, true, NOW)] },
-		])
+		const e = buildSolanaEvidence(
+			policyB64(1000n, 400n, DAY, [VENDOR]),
+			[
+				{ signature: 's2', logMessages: [spendLine(STRANGER, 100n, 400n, 1000n, false, NOW)] },
+				{ signature: 's1', logMessages: [spendLine(VENDOR, 300n, 300n, 1000n, true, NOW)] },
+			],
+			NOW,
+		)
 		const r = Object.fromEntries(evaluateAll(e, policy, NOW).map((o) => [o.controlId, o.pass]))
 		expect(r).toEqual({ 'ATT-SPEND-01': true, 'ATT-CPTY-02': false, 'ATT-KEY-03': true })
 		expect(e.at).toBe('s2')
+	})
+})
+
+describe('CPTY window after unfreeze', () => {
+	const P = policyB64(1000n, 400n, DAY, [VENDOR])
+	const cpty = (e: Evidence) => evalCounterparties(e, policy)
+
+	test('off-list spend before the latest unfreeze no longer counts', () => {
+		// newest first, like getSignaturesForAddress
+		const e = buildSolanaEvidence(
+			P,
+			[
+				{ signature: 'unfreeze', logMessages: [frozenLine(false, NOW - 10n)] },
+				{ signature: 'freeze', logMessages: [frozenLine(true, NOW - 50n)] },
+				{ signature: 'bad', logMessages: [spendLine(STRANGER, 100n, 100n, 1000n, false, NOW - 60n)] },
+			],
+			NOW,
+		)
+		expect(e.payments).toEqual([])
+		expect(e.windowStart).toBe((NOW - 10n).toString())
+		expect(cpty(e).pass).toBe(true)
+	})
+	test('off-list spend after the unfreeze still fails', () => {
+		const e = buildSolanaEvidence(
+			P,
+			[
+				{ signature: 'bad2', logMessages: [spendLine(STRANGER, 5n, 5n, 1000n, false, NOW - 5n)] },
+				{ signature: 'unfreeze', logMessages: [frozenLine(false, NOW - 10n)] },
+				{ signature: 'bad', logMessages: [spendLine(STRANGER, 100n, 100n, 1000n, false, NOW - 60n)] },
+			],
+			NOW,
+		)
+		expect(e.payments.map((p) => p.ref)).toEqual(['bad2'])
+		expect(cpty(e).pass).toBe(false)
+	})
+	test('no unfreeze: window is the current UTC day', () => {
+		const dayStart = DAY * 86_400n
+		const e = buildSolanaEvidence(
+			P,
+			[
+				{ signature: 'today', logMessages: [spendLine(VENDOR, 1n, 1n, 1000n, true, dayStart + 1n)] },
+				{ signature: 'yesterday', logMessages: [spendLine(STRANGER, 1n, 1n, 1000n, false, dayStart - 1n)] },
+			],
+			NOW,
+		)
+		expect(e.payments.map((p) => p.ref)).toEqual(['today'])
+		expect(e.windowStart).toBe(dayStart.toString())
+		expect(cpty(e).pass).toBe(true)
+	})
+	test('a freeze (frozen=true) does not open a new window', () => {
+		const e = buildSolanaEvidence(
+			P,
+			[
+				{ signature: 'freeze', logMessages: [frozenLine(true, NOW - 10n)] },
+				{ signature: 'bad', logMessages: [spendLine(STRANGER, 1n, 1n, 1000n, false, NOW - 60n)] },
+			],
+			NOW,
+		)
+		expect(cpty(e).pass).toBe(false)
+	})
+	test('CPTY evidence records the window start', () => {
+		const e = buildSolanaEvidence(P, [{ signature: 'u', logMessages: [frozenLine(false, NOW - 10n)] }], NOW)
+		expect(JSON.parse(cpty(e).evidence).windowStart).toBe((NOW - 10n).toString())
 	})
 })

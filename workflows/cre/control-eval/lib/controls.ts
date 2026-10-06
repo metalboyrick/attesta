@@ -59,6 +59,7 @@ export const evalCounterparties = (ev: Evidence, p: AgentPolicyOfRecord): Contro
 			control: 'ATT-CPTY-02',
 			source: ev.source,
 			at: ev.at,
+			windowStart: ev.windowStart,
 			allowlistSource: fromRecord ? 'policy-of-record' : 'on-chain',
 			allowlist,
 			paymentsSeen: ev.payments.length,

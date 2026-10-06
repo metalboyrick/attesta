@@ -144,17 +144,17 @@ const fetchSolanaRaw = (send: HTTPSendRequester, src: SolanaSource, apiKey: stri
 	return { policyB64: acct.value.data[0], txs }
 }
 
-export const collectSolana = (runtime: Runtime<unknown>, src: SolanaSource, apiKey: string): Evidence => {
+export const collectSolana = (runtime: Runtime<unknown>, src: SolanaSource, apiKey: string, nowSec: bigint): Evidence => {
 	const http = new cre.capabilities.HTTPClient()
 	// Every node fetches; nodes must agree on the exact raw data before we decode it.
 	const raw = http
 		.sendRequest(runtime, (send: HTTPSendRequester) => fetchSolanaRaw(send, src, apiKey), consensusIdenticalAggregation<SolanaRaw>())()
 		.result()
-	return buildSolanaEvidence(raw.policyB64, raw.txs)
+	return buildSolanaEvidence(raw.policyB64, raw.txs, nowSec)
 }
 
-export const fixtureSolana = (f: SolanaRaw): Evidence => ({
-	...buildSolanaEvidence(f.policyB64, f.txs),
+export const fixtureSolana = (f: SolanaRaw, nowSec: bigint): Evidence => ({
+	...buildSolanaEvidence(f.policyB64, f.txs, nowSec),
 	source: 'solana-fixture',
 })
 

@@ -18,6 +18,8 @@ export type Payment = {
 	amount: string
 	/** tx hash (EVM) or signature (Solana) */
 	ref: string
+	/** Block time, unix seconds, when the chain gives one. */
+	ts?: string
 	/** The chain itself flagged the payee as off-allowlist (Solana SpendEvent.allowlisted = false). */
 	flaggedOffList?: boolean
 }
@@ -28,4 +30,6 @@ export type Evidence = {
 	payments: Payment[]
 	/** Block number (EVM) or slot (Solana) the snapshot was taken at, for the auditor. */
 	at: string
+	/** Payments before this unix time were dropped (e.g. before the latest unfreeze). */
+	windowStart?: string
 }
