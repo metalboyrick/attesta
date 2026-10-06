@@ -23,6 +23,7 @@ import { ExactCardanoScheme } from "@x402/cardano/exact/client";
 import { NETWORK, provider } from "./env.js";
 import type { Attestation } from "./attestation.js";
 import { TUSDM_MASUMI_UNIT } from "./pricing.js";
+import { verdictLine } from "./score.js";
 
 if (!process.env.MNEMONIC) {
   console.error("MNEMONIC not found; run `npm run wallet` to create ~/.attesta-secrets/cardano-preprod.env");
@@ -86,14 +87,14 @@ async function main() {
 
   const failing = attestation.controls.filter(c => !c.pass).map(c => c.id);
   // Short verdict first, bold and coloured on a terminal, for the stage demo.
+  // The verdict follows `compliant`; the safety score is shown beside it.
   const banner = (text: string, color: number) =>
     process.stdout.isTTY ? `\x1b[1;${color}m${text}\x1b[0m` : text;
+  console.log(`\n${banner(verdictLine(attestation), attestation.compliant ? 32 : 31)}`);
   if (attestation.compliant) {
-    console.log(`\n${banner("DEAL", 32)}`);
     console.log(`${agentId} is compliant (${attestation.controls.length} controls, source ${attestation.source})`);
   } else {
     const why = failing.length ? `failing ${failing.join(", ")}` : "no recorded controls";
-    console.log(`\n${banner(`DECLINE ${failing.join(" ") || "NO-CONTROLS"}`, 31)}`);
     console.log(`${agentId} is not compliant (${why}, source ${attestation.source})`);
     process.exitCode = 2;
   }

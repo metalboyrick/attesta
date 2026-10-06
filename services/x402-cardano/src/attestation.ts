@@ -20,12 +20,14 @@ import {
   type Hex,
 } from "viem";
 import { sepolia } from "viem/chains";
+import { safetyScore, type SafetyScore } from "./score.js";
 
 export type Control = { id: string; pass: boolean; evidenceHash: string; ts: number };
 export type Attestation = {
   agentId: string;
   compliant: boolean;
   controls: Control[];
+  safetyScore: SafetyScore;
   source: string;
 };
 
@@ -87,17 +89,13 @@ async function fromRegistry(agentId: string): Promise<Attestation> {
       client.readContract({ address, abi: registryAbi, functionName: "getResult", args: [key, id] }),
     ),
   );
-  return {
-    agentId,
-    compliant,
-    controls: controlIds.map((id, i) => ({
-      id: controlLabel(id),
-      pass: results[i].pass,
-      evidenceHash: results[i].evidenceHash,
-      ts: Number(results[i].ts),
-    })),
-    source: `sepolia:${address}`,
-  };
+  const controls = controlIds.map((id, i) => ({
+    id: controlLabel(id),
+    pass: results[i].pass,
+    evidenceHash: results[i].evidenceHash,
+    ts: Number(results[i].ts),
+  }));
+  return { agentId, compliant, controls, safetyScore: safetyScore(controls), source: `sepolia:${address}` };
 }
 
 const STUB_CONTROL_IDS = ["ATT-SPEND-01", "ATT-CPTY-02", "ATT-KEY-03"];
@@ -111,7 +109,7 @@ function fromStub(agentId: string): Attestation {
     evidenceHash: "0x" + createHash("sha256").update(`${agentId}:${id}`).digest("hex"),
     ts,
   }));
-  return { agentId, compliant: controls.every(c => c.pass), controls, source: "stub" };
+  return { agentId, compliant: controls.every(c => c.pass), controls, safetyScore: safetyScore(controls), source: "stub" };
 }
 
 const stubEnabled = process.env.ATTESTA_STUB === "1";
