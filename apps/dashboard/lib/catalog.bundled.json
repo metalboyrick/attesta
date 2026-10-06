@@ -3,11 +3,11 @@
   "controls": [
     {
       "id": "ATT-SPEND-01",
-      "title": "Rolling 24h spend within daily cap",
-      "objective": "An agent can't move more value in any 24 hour window than its owner allowed. Overspend is caught within one evaluation cycle and the agent is frozen.",
-      "test": "Sum the amounts of all outbound transfers from the agent vault with block time in (now - 86400s, now]. Pass if sum <= policy.daily_cap read from the guard program at the same slot; fail otherwise.",
-      "evidence": "Canonical JSON of {agentId, windowStart, windowEnd, slot, dailyCap, totalSpent, txSignatures[] sorted}, hashed with keccak256.",
-      "frequency": "every 5 min cron",
+      "title": "UTC-day spend within approved cap",
+      "objective": "An agent can't move more value in one UTC day than its owner approved, and nobody can quietly raise its on-chain cap above that approval.",
+      "test": "Read the agent's on-chain spend state (EVM AgentWallet.state() or the Solana AgentPolicy account). spent = spentToday if dayIndex equals the current UTC day, else 0. Pass if spent <= approvedDailyCap from the policy of record and the on-chain cap <= approvedDailyCap; fail otherwise.",
+      "evidence": "Canonical JSON of {control, source, at, day, spentToday, approvedDailyCap, onchainCap, capDrift}, hashed with keccak256.",
+      "frequency": "per workflow run (cron every 5 min once deployed; today runs on demand via cre workflow simulate)",
       "implemented": true,
       "soc2": [
         "CC7.2",
@@ -23,13 +23,13 @@
       "id": "ATT-CPTY-02",
       "title": "Counterparties limited to allowlist",
       "objective": "An agent only pays recipients its owner approved in advance. A payment to anyone else is treated as a control failure, even if the transfer itself succeeded.",
-      "test": "For every outbound transfer in the evaluation window, check the recipient pubkey against policy.allowlist. Pass if every recipient is a member (an empty window passes); fail if any recipient is not.",
-      "evidence": "Canonical JSON of {agentId, windowStart, windowEnd, slot, allowlist[] sorted, payments[] as (txSignature, recipient, allowlisted)}, hashed with keccak256.",
-      "frequency": "every 5 min cron",
+      "test": "Collect payments in the observation window: EVM Payment events from the AgentWallet over the last 100 blocks (CRE log query limit; runs every 5 min so windows overlap), or SpendEvents from the last N guard-program transactions on Solana. Pass if every recipient is on the policy-of-record allowlist (an empty window passes); fail if any is not.",
+      "evidence": "Canonical JSON of {control, source, at, paymentsSeen, offAllowlist[] as (to, amount, ref), refs[]}, hashed with keccak256.",
+      "frequency": "per workflow run (cron every 5 min once deployed; today runs on demand via cre workflow simulate)",
       "implemented": true,
       "soc2": [
         "CC6.1",
-        "CC6.6",
+        "CC6.7",
         "CC7.2"
       ],
       "iso42001": [
@@ -42,9 +42,9 @@
       "id": "ATT-KEY-03",
       "title": "Signing key and authority unchanged",
       "objective": "The key that signs for the agent is the one that was registered, and nobody has quietly swapped the policy authority or vault owner. A stolen or rotated key without approval shows up as a failure.",
-      "test": "Read the agent's policy PDA from the guard program. Pass if policy.agent equals the registered agent key, policy.authority equals the registered authority, the policy account owner equals the guard program id, and the vault address equals the PDA derived from (vault seed, agent); fail on any mismatch.",
-      "evidence": "Canonical JSON of {agentId, slot, registeredAgentKey, observedAgentKey, registeredAuthority, observedAuthority, policyAccountOwner, guardProgramId, expectedVault, observedVault}, hashed with keccak256.",
-      "frequency": "every 5 min cron",
+      "test": "Read the agent's signer and authority (EVM AgentWallet agentSigner/owner, or Solana AgentPolicy agent/authority). Pass if both equal the registered values in the policy of record; fail on any mismatch.",
+      "evidence": "Canonical JSON of {control, source, at, signer, registeredSigner, authority, registeredAuthority}, hashed with keccak256.",
+      "frequency": "per workflow run (cron every 5 min once deployed; today runs on demand via cre workflow simulate)",
       "implemented": true,
       "soc2": [
         "CC6.1",
@@ -62,14 +62,14 @@
       "objective": "No single payment is larger than the per-transaction limit, so one bad decision by the model can't drain the daily budget in one shot.",
       "test": "For every outbound transfer in the evaluation window, compare the amount to policy.per_tx_limit. Pass if every amount <= per_tx_limit; fail otherwise.",
       "evidence": "Canonical JSON of {agentId, windowStart, windowEnd, slot, perTxLimit, transfers[] as (txSignature, amount)}, hashed with keccak256.",
-      "frequency": "every 5 min cron",
+      "frequency": "planned: every 5 min cron",
       "implemented": false,
       "soc2": [
-        "CC5.2",
+        "CC5.1",
         "PI1.3"
       ],
       "iso42001": [
-        "A.6.2.2",
+        "A.6.2.6",
         "A.9.4"
       ],
       "unverified": []
@@ -80,7 +80,7 @@
       "objective": "When any control fails, the agent is frozen quickly and stays unable to spend until a person unfreezes it. This proves the kill switch works, not just that it exists.",
       "test": "For each failing ControlResult for the agent, find the first slot where policy.frozen is true. Pass if that slot is within the max freeze latency of the failure and no outbound transfer lands between the freeze slot and the next authorized unfreeze; fail otherwise.",
       "evidence": "Canonical JSON of {agentId, failingResultTxHash, failureTs, freezeTxSignature, freezeSlot, latencySeconds, maxLatencySeconds, transfersAfterFreeze[]}, hashed with keccak256.",
-      "frequency": "every 5 min cron",
+      "frequency": "planned: every 5 min cron",
       "implemented": false,
       "soc2": [
         "CC7.3",
@@ -98,14 +98,14 @@
       "objective": "The model, system prompt, and tool list the agent runs with are the ones that were reviewed and approved. Any change goes through approval before the agent can keep spending.",
       "test": "Compute keccak256 over the canonical config manifest {modelId, modelVersion, systemPromptHash, toolManifestHash} reported by the agent runtime. Pass if it equals the approved config hash registered for the agent; fail otherwise.",
       "evidence": "Canonical JSON of {agentId, reportedManifest, computedConfigHash, approvedConfigHash, approvalRef}, hashed with keccak256.",
-      "frequency": "every 5 min cron",
+      "frequency": "planned: every 5 min cron",
       "implemented": false,
       "soc2": [
         "CC8.1"
       ],
       "iso42001": [
         "A.6.2.5",
-        "A.6.2.7"
+        "A.6.2.4"
       ],
       "unverified": []
     },
@@ -115,7 +115,7 @@
       "objective": "The record of control results has no gaps, and every stored evidence file still matches the hash written on-chain. If monitoring stops or evidence is edited, we find out.",
       "test": "List ControlResult events for the agent over the last 24h. Pass if no gap between consecutive results for any implemented control exceeds 2x the schedule interval, and keccak256 of each stored evidence blob equals its on-chain evidenceHash; fail otherwise.",
       "evidence": "Canonical JSON of {agentId, windowStart, windowEnd, expectedInterval, maxGapSeconds, results[] as (controlId, ts, evidenceHash, recomputedHash)}, hashed with keccak256.",
-      "frequency": "hourly cron",
+      "frequency": "planned: hourly cron",
       "implemented": false,
       "soc2": [
         "CC4.1",
@@ -132,7 +132,7 @@
       "objective": "Payments above a set amount need a signed approval from a named human before they go out. The agent can't approve its own large payments.",
       "test": "For every outbound transfer with amount > policy.approval_threshold, look for an approval signed by a registered approver key over (agentId, recipient, amount, nonce) with a timestamp before the transfer. Pass if every such transfer has one and the approver key differs from the agent key; fail otherwise.",
       "evidence": "Canonical JSON of {agentId, windowStart, windowEnd, approvalThreshold, transfers[] as (txSignature, amount, approvalSigHash, approverKey, approvalTs)}, hashed with keccak256.",
-      "frequency": "every 5 min cron",
+      "frequency": "planned: every 5 min cron",
       "implemented": false,
       "soc2": [
         "CC5.1",

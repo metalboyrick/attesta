@@ -60,17 +60,7 @@ Only controls with `implemented: true` in `controls/catalog.json` get results. T
 
 ## Catalogue
 
-Read at request time from `../../controls/catalog.json` (override with `CONTROLS_CATALOG_PATH`). If that file is not deployed next to the app, the build-time copy in `lib/catalog.bundled.json` is used. Re-sync it after catalogue changes:
-
-```bash
-python3 - <<'PY'
-import json
-d=json.load(open('../../controls/catalog.json'))
-keep=['id','title','objective','test','evidence','frequency','implemented']
-out=[{k:c[k] for k in keep}|{'soc2':c['soc2_tsc'],'iso42001':c['iso42001_annex_a'],'unverified':c.get('unverified',[])} for c in d['controls']]
-open('lib/catalog.bundled.json','w').write(json.dumps({'version':d['version'],'controls':out},indent=2)+"\n")
-PY
-```
+Read at request time from `../../controls/catalog.json` (override with `CONTROLS_CATALOG_PATH`). If that file is not deployed next to the app, the build-time copy in `lib/catalog.bundled.json` is used. `pnpm build` re-syncs it first (`scripts/sync-catalog.mjs`) when the repo file exists. Commit the updated copy so Docker builds, which only see `apps/dashboard`, carry the current catalogue.
 
 ## Env
 
