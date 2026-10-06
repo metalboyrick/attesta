@@ -34,6 +34,28 @@
         "registeredSigner": "2pVzN7yA5qS6ozXVpxkwiSQhHy9362L9mrHwbVSBJfmM",
         "registeredAuthority": "26PteCCDtK2AButaeNLTuABN91EidBnnUEG3peB6V4n9"
       }
+    },
+    {
+      "agentId": "attesta-demo-agent-3",
+      "kind": "cardano",
+      "controls": [
+        "ATT-SPEND-01",
+        "ATT-CPTY-02"
+      ],
+      "cardano": {
+        "mode": "rpc",
+        "koiosUrl": "https://preprod.koios.rest/api/v1",
+        "address": "addr_test1qz26gtjxv36378vqv40un4w6qjnfz09gcw6lz7jyus0q0f79a85l60732tzxdgzvhepwyuh0sn0rpwzkermlmhkhm7rq2qc2rg",
+        "limit": 10
+      },
+      "policy": {
+        "approvedDailyCap": "50000000",
+        "allowlist": [
+          "addr_test1qztvnhavscfaupuwy824jem5z8dxavkzz6ukg4xyzls3gn2mejfgg4sl7sj4rdxxdnzsqvpkzwu0v39338t9aj6p6q7stjznf6"
+        ],
+        "registeredSigner": "addr_test1qz26gtjxv36378vqv40un4w6qjnfz09gcw6lz7jyus0q0f79a85l60732tzxdgzvhepwyuh0sn0rpwzkermlmhkhm7rq2qc2rg",
+        "registeredAuthority": ""
+      }
     }
   ]
 }

@@ -13,6 +13,7 @@ import {
 	type Runtime,
 } from '@chainlink/cre-sdk'
 import { type Address, decodeEventLog, decodeFunctionResult, encodeFunctionData, type Hex, parseAbi, toEventSelector, zeroAddress } from 'viem'
+import { buildCardanoEvidence, type CardanoRaw, type KoiosTx } from './cardano'
 import { buildSolanaEvidence, type SolanaTx } from './solana'
 import type { Evidence } from './types'
 
@@ -134,7 +135,10 @@ const fetchSolanaRaw = (send: HTTPSendRequester, src: SolanaSource, apiKey: stri
 			s.signature,
 			{ encoding: 'json', commitment: src.commitment, maxSupportedTransactionVersion: 0 },
 		])
-		txs.push({ signature: s.signature, logMessages: tx?.meta?.logMessages ?? [] })
+		if (tx?.meta?.err) continue
+		// Only event lines: keeps the consensus observation small.
+		const logs: string[] = (tx?.meta?.logMessages ?? []).filter((l: string) => l.startsWith('Program data: '))
+		txs.push({ signature: s.signature, logMessages: logs })
 	}
 	return { policyB64: acct.value.data[0], txs }
 }
@@ -151,4 +155,64 @@ export const collectSolana = (runtime: Runtime<unknown>, src: SolanaSource, apiK
 export const fixtureSolana = (f: SolanaRaw): Evidence => ({
 	...buildSolanaEvidence(f.policyB64, f.txs),
 	source: 'solana-fixture',
+})
+
+// ─── Cardano (Koios, preprod) ───────────────────────────────
+
+export type CardanoSource = { koiosUrl: string; address: string; limit: number }
+
+/** CRE consensus observations are capped at 25 KB; stay clear of it. */
+const MAX_OBSERVATION_BYTES = 20_000
+
+const koios = (send: HTTPSendRequester, base: string, path: string, body: unknown) => {
+	const res = send
+		.sendRequest({
+			url: `${base}${path}`,
+			method: 'POST',
+			headers: { 'content-type': 'application/json', accept: 'application/json' },
+			body: bytesToBase64(new TextEncoder().encode(JSON.stringify(body))),
+		})
+		.result()
+	if (res.statusCode !== 200) throw new Error(`koios ${path}: HTTP ${res.statusCode}`)
+	return JSON.parse(new TextDecoder().decode(res.body))
+}
+
+const fetchCardanoRaw = (send: HTTPSendRequester, src: CardanoSource, dayStart: string): CardanoRaw => {
+	const rows: { tx_hash: string }[] = koios(
+		send,
+		src.koiosUrl,
+		`/address_txs?block_time=gte.${dayStart}&order=block_time.desc&limit=${src.limit}`,
+		{ _addresses: [src.address] },
+	)
+	if (rows.length === 0) return { txCount: 0, limit: src.limit, txs: [] }
+	const infos: KoiosTx[] = koios(send, src.koiosUrl, '/tx_info', {
+		_tx_hashes: rows.map((r) => r.tx_hash),
+		_inputs: true,
+	})
+	const trim = (o: KoiosTx['outputs'][number]) => ({
+		payment_addr: { bech32: o.payment_addr.bech32, cred: o.payment_addr.cred },
+		value: o.value,
+	})
+	// One input per payment credential is enough to tell "the agent paid"; wallets with many UTxOs would bloat it.
+	const dedupe = (ins: KoiosTx['inputs']) => ins.filter((x, i) => ins.findIndex((y) => y.payment_addr.cred === x.payment_addr.cred) === i)
+	const txs = infos
+		.map((t) => ({ tx_hash: t.tx_hash, tx_timestamp: t.tx_timestamp, inputs: dedupe(t.inputs).map(trim), outputs: t.outputs.map(trim) }))
+		.sort((a, b) => (a.tx_hash < b.tx_hash ? -1 : 1))
+	const raw = { txCount: rows.length, limit: src.limit, txs }
+	if (JSON.stringify(raw).length > MAX_OBSERVATION_BYTES) throw new Error('koios observation over size budget')
+	return raw
+}
+
+/** 2 HTTP calls (1 when no txs today). */
+export const collectCardano = (runtime: Runtime<unknown>, src: CardanoSource, dayStart: bigint): Evidence => {
+	const http = new cre.capabilities.HTTPClient()
+	const raw = http
+		.sendRequest(runtime, (send: HTTPSendRequester) => fetchCardanoRaw(send, src, dayStart.toString()), consensusIdenticalAggregation<CardanoRaw>())()
+		.result()
+	return buildCardanoEvidence(src.address, dayStart, raw)
+}
+
+export const fixtureCardano = (address: string, dayStart: bigint, f: CardanoRaw): Evidence => ({
+	...buildCardanoEvidence(address, dayStart, f),
+	source: `cardano-fixture:${address}`,
 })

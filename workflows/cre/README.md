@@ -25,9 +25,25 @@ Canonical ids, shared by every service. `agentId` on-chain is `keccak256(utf8 id
 |---|---|---|
 | `attesta-demo-agent-1` | Sepolia, `AgentWallet` | yes |
 | `attesta-demo-agent-2` | Solana devnet, agent `2pVzN7yA5qS6ozXVpxkwiSQhHy9362L9mrHwbVSBJfmM`, policy PDA `2QAPFh8haAazrqeRhnZNqdVPittts2oQsaMQXtkTm6ZH` | yes, once the guard program is deployed and the agent registered |
-| `attesta-demo-agent-3` | Cardano preprod | not yet |
+| `attesta-demo-agent-3` | Cardano preprod, x402 buyer wallet `addr_test1qz26gtjx...q2qc2rg` (Koios) | yes: ATT-SPEND-01 and ATT-CPTY-02 (plain key address, so no authority for ATT-KEY-03) |
 
 If an agent's evidence can't be fetched, the workflow writes nothing for it and logs `skipped`. A missing read is not a FAIL, because a FAIL freezes the agent.
+
+## Per-run budget
+
+Checked against `cre workflow limits export` (CLI v1.37.0).
+
+**Table 0b. Calls per run vs limits**
+
+| Resource | Use per run | Limit |
+|---|---|---|
+| EVM chain reads | 3 (header, `state()`, `Payment` logs) | 15 |
+| HTTP calls | Solana 2 + up to 8 `getTransaction` = 10; Cardano 2 (1 if no txs today). Max 12 | 15 |
+| Chain writes | 3 + 3 + 2 = 8 reports | 10 (`ChainWrite.TargetsLimit`) |
+| Consensus observation | Cardano capped at 20 KB in code (about 8 KB for 10 real txs); Solana keeps only `Program data:` lines | 25 KB |
+| Report size | 160 bytes each | 50 KB |
+
+Cardano reads today's txs only (`block_time >= UTC day start`, limit 10). If Koios returns 10 rows, the day may be cut off, so the agent is skipped rather than given a PASS on partial data.
 
 ## Controls
 
@@ -39,6 +55,8 @@ The full catalog is in `controls/catalog.json`. Table 1 shows what this workflow
 |---|---|---|---|
 | ATT-SPEND-01 | today's spend <= approved cap, and on-chain cap <= approved cap | `AgentWallet.state()` | `AgentPolicy` account (`getAccountInfo`) |
 | ATT-CPTY-02 | every payee in the window is on the allowlist, and (Solana) no `SpendEvent` has `allowlisted = false` | `Payment` logs, last 100 blocks | `SpendEvent` in last N txs (`getSignaturesForAddress` + `getTransaction`) |
+
+Cardano (agent-3): Koios `address_txs` + `tx_info`. A tx counts as spend when an input is the agent's; outputs to the agent's payment credential are change. Only lovelace counts toward the cap.
 | ATT-KEY-03 | signer and authority equal the registered ones | `AgentWallet.state()` | `AgentPolicy.agent` / `.authority` |
 
 The "policy of record" (approved cap, allowlist, registered signer and authority) lives in `config.staging.json` per agent. On-chain state is compared against it, so raising the cap on-chain or swapping a key shows up as a failure. An empty `allowlist` in the config means "use the allowlist stored in the Solana AgentPolicy"; the evidence JSON records which one was used.
@@ -134,6 +152,6 @@ Fixture mode (`solana.mode: "fixture"`) exists for tests only. Fixture results a
 - The simulator's forwarder does not pass real workflow metadata. Leave `setExpectedAuthor` at `address(0)` while simulating. Turn it on (and `setForwarderAddress` to the production KeystoneForwarder) once we have deploy access.
 - CRE caps a log query at 100 blocks. ATT-CPTY-02 on EVM only sees the last 100 blocks per run. With a 5 minute cron (about 25 blocks) the windows overlap, so nothing is skipped while the workflow runs on schedule.
 - `evmLogBlockTag` is `latest` for the demo so a payment shows up on the next run. Use `finalized` on a real DON; `latest` can differ between nodes.
-- One run sends up to 6 report txs (2 agents x 3 controls). `cre workflow limits export` shows `ChainWrite.TargetsLimit: 10`. We read that as max writes per run (not confirmed in docs), which would cap us at 3 agents per run.
+- One run sends up to 8 report txs. We read `ChainWrite.TargetsLimit: 10` as max writes per run (not confirmed in docs).
 - `test/MockForwarderFork.t.sol` calls the live Sepolia mock forwarder on a fork, so the forwarder path is tested before we spend gas.
 - To refresh the Solana fixture: `bun test/fixture.ts` prints new `policyB64`, `txs` and the base58 keys used.

@@ -1,8 +1,8 @@
 import { bytesToHex, cre, getNetwork, prepareReportRequest, TxStatus, type Runtime } from '@chainlink/cre-sdk'
 import { type Address, encodeAbiParameters, keccak256, parseAbiParameters, stringToHex } from 'viem'
 import { z } from 'zod'
-import { collectEvm, collectSolana, fixtureSolana } from './lib/collectors'
-import { type ControlOutcome, evaluateAll } from './lib/controls'
+import { collectCardano, collectEvm, collectSolana, fixtureCardano, fixtureSolana } from './lib/collectors'
+import { type ControlOutcome, evaluateAll, SECONDS_PER_DAY } from './lib/controls'
 import type { Evidence } from './lib/types'
 
 // ─── Config Schema ──────────────────────────────────────────
@@ -13,8 +13,13 @@ const policySchema = z.object({
 	registeredAuthority: z.string(),
 })
 
+const CONTROL_IDS = ['ATT-SPEND-01', 'ATT-CPTY-02', 'ATT-KEY-03'] as const
+// Which controls to run for an agent. Default: all three.
+const controlsField = z.array(z.enum(CONTROL_IDS)).optional()
+
 const evmAgentSchema = z.object({
 	agentId: z.string(),
+	controls: controlsField,
 	kind: z.literal('evm'),
 	wallet: z.string(),
 	policy: policySchema,
@@ -22,6 +27,7 @@ const evmAgentSchema = z.object({
 
 const solanaAgentSchema = z.object({
 	agentId: z.string(),
+	controls: controlsField,
 	kind: z.literal('solana'),
 	solana: z.object({
 		mode: z.enum(['rpc', 'fixture']),
@@ -40,13 +46,42 @@ const solanaAgentSchema = z.object({
 	policy: policySchema,
 })
 
+const cardanoAgentSchema = z.object({
+	agentId: z.string(),
+	kind: z.literal('cardano'),
+	// Plain key address: no authority to check, so ATT-KEY-03 is normally left out here.
+	controls: controlsField,
+	cardano: z.object({
+		mode: z.enum(['rpc', 'fixture']),
+		koiosUrl: z.string(),
+		address: z.string(),
+		// Max 10 keeps the consensus observation under the 25 KB limit (about 1.2 KB per tx).
+		limit: z.number().int().min(2).max(10),
+		fixture: z
+			.object({
+				txCount: z.number(),
+				limit: z.number(),
+				txs: z.array(
+					z.object({
+						tx_hash: z.string(),
+						tx_timestamp: z.number(),
+						inputs: z.array(z.object({ payment_addr: z.object({ bech32: z.string(), cred: z.string() }), value: z.string() })),
+						outputs: z.array(z.object({ payment_addr: z.object({ bech32: z.string(), cred: z.string() }), value: z.string() })),
+					}),
+				),
+			})
+			.optional(),
+	}),
+	policy: policySchema,
+})
+
 export const configSchema = z.object({
 	schedule: z.string(),
 	chainSelectorName: z.string(),
 	registryAddress: z.string(),
 	gasLimit: z.string(),
 	evmLogBlockTag: z.enum(['latest', 'finalized']),
-	agents: z.array(z.discriminatedUnion('kind', [evmAgentSchema, solanaAgentSchema])),
+	agents: z.array(z.discriminatedUnion('kind', [evmAgentSchema, solanaAgentSchema, cardanoAgentSchema])),
 })
 type Config = z.infer<typeof configSchema>
 
@@ -69,8 +104,9 @@ export const onCronTrigger = (runtime: Runtime<Config>): string => {
 
 	for (const agent of config.agents) {
 		let evidence: Evidence
+		let fixture: boolean
 		try {
-			evidence = collect(runtime, evm, config, agent)
+			;({ evidence, fixture } = collect(runtime, evm, config, agent, nowSec))
 		} catch (e) {
 			// No evidence is not a FAIL: writing one would freeze an agent for our own outage. Skip and say so.
 			skipped.push(`${agent.agentId}: evidence unavailable: ${(e as Error).message}`)
@@ -78,8 +114,9 @@ export const onCronTrigger = (runtime: Runtime<Config>): string => {
 		}
 		runtime.log(`${agent.agentId}: ${evidence.source} payments=${evidence.payments.length} at=${evidence.at}`)
 
-		const outcomes = evaluateAll(evidence, agent.policy, nowSec)
-		if (evidence.source.endsWith('-fixture')) {
+		const wanted: readonly string[] = agent.controls ?? CONTROL_IDS
+		const outcomes = evaluateAll(evidence, agent.policy, nowSec).filter((o) => wanted.includes(o.controlId))
+		if (fixture) {
 			// Fixture results never go on-chain, so no demo tx link can point at made-up data.
 			outcomes.forEach((o) => skipped.push(`${agent.agentId}/${o.controlId}=${o.pass ? 'PASS' : 'FAIL'} (fixture, not written)`))
 			continue
@@ -102,14 +139,28 @@ const collect = (
 	evm: InstanceType<typeof cre.capabilities.EVMClient>,
 	config: Config,
 	agent: Config['agents'][number],
-): Evidence => {
-	if (agent.kind === 'evm') return collectEvm(runtime, evm, agent.wallet as Address, config.evmLogBlockTag)
-	if (agent.solana.mode === 'fixture') {
-		if (!agent.solana.fixture) throw new Error('fixture mode without fixture')
-		return fixtureSolana(agent.solana.fixture)
+	nowSec: bigint,
+): { evidence: Evidence; fixture: boolean } => {
+	switch (agent.kind) {
+		case 'evm':
+			return { evidence: collectEvm(runtime, evm, agent.wallet as Address, config.evmLogBlockTag), fixture: false }
+		case 'solana': {
+			if (agent.solana.mode === 'fixture') {
+				if (!agent.solana.fixture) throw new Error('fixture mode without fixture')
+				return { evidence: fixtureSolana(agent.solana.fixture), fixture: true }
+			}
+			const apiKey = agent.solana.apiKeyHeader ? runtime.getSecret({ id: 'SOLANA_RPC_API_KEY' }).result().value : ''
+			return { evidence: collectSolana(runtime, agent.solana, apiKey), fixture: false }
+		}
+		case 'cardano': {
+			const dayStart = (nowSec / SECONDS_PER_DAY) * SECONDS_PER_DAY
+			if (agent.cardano.mode === 'fixture') {
+				if (!agent.cardano.fixture) throw new Error('fixture mode without fixture')
+				return { evidence: fixtureCardano(agent.cardano.address, dayStart, agent.cardano.fixture), fixture: true }
+			}
+			return { evidence: collectCardano(runtime, agent.cardano, dayStart), fixture: false }
+		}
 	}
-	const apiKey = agent.solana.apiKeyHeader ? runtime.getSecret({ id: 'SOLANA_RPC_API_KEY' }).result().value : ''
-	return collectSolana(runtime, agent.solana, apiKey)
 }
 
 const writeResult = (
