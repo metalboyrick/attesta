@@ -99,7 +99,7 @@ evidenceHash = keccak256(evidence JSON, logged by the workflow), ts = runtime.no
    tar -xzf cre_linux_amd64.tar.gz && install -m 755 cre_v1.37.0_linux_amd64 ~/.local/bin/cre
    ```
 
-2. Auth. `cre` needs a login for `init` and `simulate`. For headless use, create an API key at https://app.chain.link (Account Settings) and save it outside the repo:
+2. Auth. `cre` needs a login for `init` and `simulate`. We use `cre login` (browser; session lives in `~/.cre`). Per the official chainlink-cre-skill, API-key auth also needs approval. If you do have a key, save it outside the repo:
 
    ```bash
    umask 077; echo 'CRE_API_KEY=<key>' > ~/.attesta-secrets/cre.env

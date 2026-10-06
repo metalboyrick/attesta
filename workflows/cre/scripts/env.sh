@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds ~/.attesta-secrets/cre-sim.env (chmod 600) from the secrets dir. Nothing secret touches the repo.
-# Inputs: ~/.attesta-secrets/sepolia-deployer.json (cast wallet new --json)
+# Inputs: ~/.attesta-secrets/sepolia-deployer.json (cast wallet new --json). cre.env is optional (cre login works too).
 #         ~/.attesta-secrets/cre.env  (CRE_API_KEY=..., optional SEPOLIA_RPC_URL=..., SOLANA_RPC_API_KEY=...)
 set -euo pipefail
 S="$HOME/.attesta-secrets"
