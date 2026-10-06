@@ -3,7 +3,8 @@
  *
  * For an agent mapped to a Solana guard policy:
  *   ControlResult pass=false                      -> set_frozen(true)
- *   registry failingCount > 0, policy not frozen  -> set_frozen(true)  (reconcile, every tick)
+ *   registry has a failing result, not frozen      -> set_frozen(true)  (reconcile, every tick)
+ *   ...but never on a result older than the policy's last unfreeze (a person's unfreeze wins)
  *   pass=true, AUTO_UNFREEZE=1, failingCount == 0 -> set_frozen(false)
  *
  * AUTO_UNFREEZE defaults to off: ATT-FRZ-05 requires a person to unfreeze
@@ -29,13 +30,16 @@ import { pathToFileURL } from "node:url";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { createPublicClient, http, isAddress, keccak256, parseAbi, toHex, type Address, type Hex } from "viem";
 import { initState, tick, type Agent, type Config, type Deps, type State } from "./core.ts";
-import { fetchPolicy, guardProgram, loadKeypair, setFrozen } from "./guard.ts";
+import { fetchPolicy, guardProgram, lastUnfreezeTs, loadKeypair, setFrozen } from "./guard.ts";
 
 export { reasonCode } from "./core.ts";
 
 export const registryAbi = parseAbi([
   "event ControlResult(bytes32 indexed controlId, bytes32 indexed agentId, bool pass, bytes32 evidenceHash, uint64 ts)",
   "function failingCount(bytes32 agentId) view returns (uint256)",
+  "function getControls(bytes32 agentId) view returns (bytes32[])",
+  "struct Result { bool pass; bytes32 evidenceHash; uint64 ts; }",
+  "function getResult(bytes32 agentId, bytes32 controlId) view returns (Result)",
 ]);
 
 const CONTROL_RESULT = registryAbi[0];
@@ -99,10 +103,22 @@ export async function runRelayer() {
         agentId: l.args.agentId!,
         controlId: l.args.controlId!,
         pass: l.args.pass!,
+        ts: l.args.ts!,
       }));
     },
     failingCount: agentId =>
       evm.readContract({ address: registry as Address, abi: registryAbi, functionName: "failingCount", args: [agentId] }),
+    failingResults: async agentId => {
+      const reg = { address: registry as Address, abi: registryAbi } as const;
+      const controls = await evm.readContract({ ...reg, functionName: "getControls", args: [agentId] });
+      const out: { controlId: Hex; ts: bigint }[] = [];
+      for (const controlId of controls) {
+        const r = await evm.readContract({ ...reg, functionName: "getResult", args: [agentId, controlId] });
+        if (!r.pass) out.push({ controlId, ts: r.ts });
+      }
+      return out;
+    },
+    lastUnfreezeTs: agent => lastUnfreezeTs(connection, agent),
     frozen: async agent => (await fetchPolicy(program, agent))?.frozen ?? null,
     setFrozen: (agent, frozen, reason, memo) => setFrozen(program, authority, agent, frozen, reason, memo),
     log: (event, fields) => {

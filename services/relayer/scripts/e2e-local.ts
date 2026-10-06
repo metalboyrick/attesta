@@ -94,7 +94,7 @@ async function main() {
     SOLANA_RPC_URL: SOLANA_RPC,
     SOLANA_AGENTS: `${AGENT_ID}=${agent.publicKey.toBase58()}`,
     SOLANA_PAYER_KEYPAIR: "~/.attesta-secrets/solana-deployer.json",
-    RELAYER_FROM_BLOCK: fromBlock.toString(),
+    REGISTRY_DEPLOY_BLOCK: fromBlock.toString(),
     RELAYER_STATE_FILE: stateFile,
     RELAYER_ONCE: "1",
     RELAYER_CONFIRMATIONS: "0",

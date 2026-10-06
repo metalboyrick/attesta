@@ -78,3 +78,24 @@ export async function setFrozen(
     .signers([authority])
     .rpc();
 }
+
+/**
+ * ts of the newest FrozenChanged(frozen=false) for this agent, read from the
+ * policy PDA's recent transactions (newest first, stops at the first match).
+ * null if none is found in the last `limit` transactions.
+ */
+export async function lastUnfreezeTs(connection: Connection, agent: PublicKey, limit = 100): Promise<bigint | null> {
+  const parser = guardEventParser();
+  const sigs = await connection.getSignaturesForAddress(policyPda(agent), { limit }, "confirmed");
+  for (const s of sigs) {
+    if (s.err) continue;
+    const tx = await connection.getTransaction(s.signature, { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
+    if (!tx?.meta || tx.meta.err) continue;
+    for (const ev of parser.parseLogs(tx.meta.logMessages ?? [])) {
+      if (ev.name !== "FrozenChanged" && ev.name !== "frozenChanged") continue;
+      const d = ev.data as { agent: PublicKey; frozen: boolean; ts: { toString(): string } };
+      if (!d.frozen && d.agent.equals(agent)) return BigInt(d.ts.toString());
+    }
+  }
+  return null;
+}

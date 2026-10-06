@@ -24,12 +24,13 @@ So the Solana transaction points back to the Sepolia `ControlResult` that caused
 ## Reliability
 
 - **Backfill.** With no saved state for the configured registry, the relayer starts at `REGISTRY_DEPLOY_BLOCK` and refuses to start without it. It never starts at head, so FAILs written while it was down still freeze. State is tied to the registry address. A redeployed registry (new `ATTESTA_REGISTRY_ADDRESS`) starts fresh from its own deploy block.
-- **Level trigger.** Every tick, for each mapped agent, it reads `failingCount` from the registry. If that is above 0 and the policy is not frozen, it freezes with a `attesta:reconcile:...` memo. Logs are still used, to link each freeze to its source tx.
+- **Level trigger.** Every tick, for each mapped agent, it reads `failingCount` from the registry. If that is above 0 and the policy is not frozen, it freezes (subject to the unfreeze rule below) with a `attesta:reconcile:...` memo. Logs are still used, to link each freeze to its source tx.
+- **A person's unfreeze wins over older FAILs.** The registry keeps `failingCount > 0` until CRE writes a new result, so a plain level trigger would re-freeze right after `pnpm unfreeze`. Both the log path and the reconcile path freeze only on a failing result whose `ts` is newer than the policy's latest `FrozenChanged(frozen=false).ts` (read from the policy's last 100 transactions). A new FAIL after the unfreeze freezes again.
 - **No head-of-line blocking.** Each log is handled in its own try/catch. A log that fails goes to `pending` and is retried on later ticks while the cursor moves on. After `RELAYER_MAX_ATTEMPTS` (default 5) it moves to `dead` and a `dead_letter` line is logged. Reconcile still freezes that agent once the cause is fixed.
 - **Confirmations.** Logs are only acted on `RELAYER_CONFIRMATIONS` blocks (default 2) behind head, to avoid a freeze from a reorged log.
 - **Idempotent.** Each log key (`txHash:logIndex`) is handled once. The relayer also reads the policy and skips when `frozen` already matches.
 
-Unit tests for all of the above run on an in-memory fake chain: `npm test` (8 tests).
+Unit tests for all of the above run on an in-memory fake chain: `npm test` (11 tests).
 
 ## Run
 

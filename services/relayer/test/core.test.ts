@@ -23,16 +23,21 @@ function fakeChain() {
     [pkB.toBase58(), false],
   ]);
   const failSet = new Set<string>(); // agents whose setFrozen throws
+  const lastUnfreeze = new Map<string, bigint>(); // FrozenChanged(frozen=false).ts per agent
+  const results = new Map<Hex, Map<Hex, { pass: boolean; ts: bigint }>>(); // latest result per agent/control
   const calls: { agent: string; frozen: boolean; memo: string }[] = [];
   const events: { event: string; fields: Record<string, unknown> }[] = [];
   let head = 100n;
   let n = 0;
 
-  const emit = (agentId: Hex, pass: boolean, block: bigint) => {
+  const emit = (agentId: Hex, pass: boolean, block: bigint, ts = block * 10n) => {
     n += 1;
     const txHash = `0x${n.toString(16).padStart(64, "0")}` as Hex;
-    logs.push({ key: `${txHash}:0`, txHash, blockNumber: block, agentId, controlId: CONTROL, pass });
-    failing.set(agentId, (failing.get(agentId) ?? 0n) + (pass ? 0n : 1n));
+    logs.push({ key: `${txHash}:0`, txHash, blockNumber: block, agentId, controlId: CONTROL, pass, ts });
+    const byControl = results.get(agentId) ?? new Map();
+    byControl.set(CONTROL, { pass, ts });
+    results.set(agentId, byControl);
+    failing.set(agentId, [...byControl.values()].filter(r => !r.pass).length ? 1n : 0n);
     if (block > head) head = block;
   };
 
@@ -40,6 +45,11 @@ function fakeChain() {
     head: async () => head,
     logs: async (from, to) => logs.filter(l => l.blockNumber >= from && l.blockNumber <= to),
     failingCount: async agentId => failing.get(agentId) ?? 0n,
+    failingResults: async agentId =>
+      [...(results.get(agentId) ?? new Map()).entries()]
+        .filter(([, r]) => !r.pass)
+        .map(([controlId, r]) => ({ controlId, ts: r.ts })),
+    lastUnfreezeTs: async (agent: PublicKey) => lastUnfreeze.get(agent.toBase58()) ?? null,
     frozen: async (agent: PublicKey) => frozen.get(agent.toBase58()) ?? null,
     setFrozen: async (agent, f, _reason, memo) => {
       if (failSet.has(agent.toBase58())) throw new Error(`boom ${agent.toBase58()}`);
@@ -54,6 +64,7 @@ function fakeChain() {
     emit,
     frozen,
     failSet,
+    lastUnfreeze,
     calls,
     events,
     setHead: (h: bigint) => (head = h),
@@ -158,6 +169,36 @@ test("never unfreezes unless AUTO_UNFREEZE", async () => {
   c.frozen.set(pkA.toBase58(), true);
   c.emit(hashA, true, 10n);
   const state = initState(null, REGISTRY, "1");
+  await tick(cfg(), c.deps, state);
+  assert.equal(c.frozen.get(pkA.toBase58()), true);
+});
+
+test("human unfreeze is respected: a FAIL older than the unfreeze does not re-freeze (reconcile)", async () => {
+  const c = fakeChain();
+  c.emit(hashA, false, 10n, 100n); // FAIL at ts=100
+  c.lastUnfreeze.set(pkA.toBase58(), 200n); // person unfroze at ts=200; registry still says failing
+  const state = initState(null, REGISTRY, "50"); // cursor past the log: reconcile only
+  await tick(cfg(), c.deps, state);
+  assert.equal(c.frozen.get(pkA.toBase58()), false);
+  assert.equal(c.calls.length, 0);
+});
+
+test("human unfreeze is respected on backfill: an old FAIL log does not re-freeze", async () => {
+  const c = fakeChain();
+  c.emit(hashA, false, 10n, 100n);
+  c.lastUnfreeze.set(pkA.toBase58(), 200n);
+  const state = initState(null, REGISTRY, "1"); // restart re-reads the old FAIL
+  await tick(cfg(), c.deps, state);
+  assert.equal(c.frozen.get(pkA.toBase58()), false);
+});
+
+test("a FAIL newer than the last unfreeze freezes again", async () => {
+  const c = fakeChain();
+  c.emit(hashA, false, 10n, 100n);
+  c.lastUnfreeze.set(pkA.toBase58(), 200n);
+  const state = initState(null, REGISTRY, "1");
+  await tick(cfg(), c.deps, state);
+  c.emit(hashA, false, 20n, 300n); // new FAIL after the unfreeze
   await tick(cfg(), c.deps, state);
   assert.equal(c.frozen.get(pkA.toBase58()), true);
 });

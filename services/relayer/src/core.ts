@@ -7,9 +7,15 @@
  *   2. Scan ControlResult logs from the cursor up to head - confirmations.
  *      Each log is handled in its own try/catch; a failure goes to pending and
  *      the cursor still moves on.
- *   3. Reconcile (level trigger): for each mapped agent, if the registry says
- *      failingCount > 0 and the guard policy is not frozen, freeze it. This
+ *   3. Reconcile (level trigger): for each mapped agent, if the registry has a
+ *      failing result and the guard policy is not frozen, freeze it. This
  *      covers FAILs missed while the relayer was down or dead-lettered.
+ *
+ * A person's unfreeze wins over older FAILs: both paths only freeze on a
+ * failing result whose ts is newer than the policy's latest
+ * FrozenChanged(frozen=false).ts. The registry keeps failingCount > 0 until
+ * CRE writes a new result, so without this rule the relayer would re-freeze
+ * right after `pnpm unfreeze`.
  *
  * Unfreeze only happens with autoUnfreeze (off by default, ATT-FRZ-05).
  */
@@ -23,6 +29,8 @@ export type ResultLog = {
   agentId: Hex;
   controlId: Hex;
   pass: boolean;
+  /** ControlResult.ts, unix seconds. */
+  ts: bigint;
 };
 
 export type Agent = { agentId: string; pubkey: PublicKey };
@@ -42,13 +50,17 @@ export type Deps = {
   head(): Promise<bigint>;
   logs(from: bigint, to: bigint): Promise<ResultLog[]>;
   failingCount(agentId: Hex): Promise<bigint>;
+  /** Latest result per control where pass == false. */
+  failingResults(agentId: Hex): Promise<{ controlId: Hex; ts: bigint }[]>;
+  /** ts of the newest FrozenChanged(frozen=false) for this agent, or null if never unfrozen. */
+  lastUnfreezeTs(agent: PublicKey): Promise<bigint | null>;
   /** null when the agent has no policy on Solana. */
   frozen(agent: PublicKey): Promise<boolean | null>;
   setFrozen(agent: PublicKey, frozen: boolean, reasonCode: number, memo: string): Promise<string>;
   log(event: string, fields: Record<string, unknown>): void;
 };
 
-type StoredLog = Omit<ResultLog, "blockNumber"> & { blockNumber: string };
+type StoredLog = Omit<ResultLog, "blockNumber" | "ts"> & { blockNumber: string; ts: string };
 
 export type State = {
   registry: string;
@@ -77,8 +89,8 @@ export function reasonCode(controlId: Hex): number {
   return Number.parseInt(controlId.slice(2, 10), 16);
 }
 
-const store = (l: ResultLog): StoredLog => ({ ...l, blockNumber: l.blockNumber.toString() });
-const load = (l: StoredLog): ResultLog => ({ ...l, blockNumber: BigInt(l.blockNumber) });
+const store = (l: ResultLog): StoredLog => ({ ...l, blockNumber: l.blockNumber.toString(), ts: l.ts.toString() });
+const load = (l: StoredLog): ResultLog => ({ ...l, blockNumber: BigInt(l.blockNumber), ts: BigInt(l.ts ?? 0) });
 
 export async function tick(cfg: Config, deps: Deps, state: State): Promise<void> {
   const seen = new Set(state.seen);
@@ -96,12 +108,29 @@ export async function tick(cfg: Config, deps: Deps, state: State): Promise<void>
     });
   };
 
+  /** Freeze unless already frozen, no policy, or a person unfroze after this result. */
+  const freezeIfNewer = async (agent: Agent, resultTs: bigint, reason: number, memo: string, fields: Record<string, unknown>) => {
+    const current = await deps.frozen(agent.pubkey);
+    if (current === null) return deps.log("skip_no_policy", { agentId: agent.agentId, ...fields });
+    if (current) return deps.log("noop_already", { agentId: agent.agentId, frozen: true, ...fields });
+    const unfrozenAt = await deps.lastUnfreezeTs(agent.pubkey);
+    if (unfrozenAt !== null && resultTs <= unfrozenAt) {
+      return deps.log("skip_before_unfreeze", {
+        agentId: agent.agentId,
+        resultTs: resultTs.toString(),
+        unfrozenAt: unfrozenAt.toString(),
+        ...fields,
+      });
+    }
+    await drive(agent, true, reason, memo, fields);
+  };
+
   const handle = async (l: ResultLog) => {
     const agent = cfg.agents.get(l.agentId);
     if (!agent) return;
     const fields = { controlId: l.controlId, sourceTx: l.txHash, sourceBlock: l.blockNumber.toString() };
     if (!l.pass) {
-      await drive(agent, true, reasonCode(l.controlId), `attesta:freeze:${agent.agentId}:${l.controlId}:sepolia:${l.txHash}`, fields);
+      await freezeIfNewer(agent, l.ts, reasonCode(l.controlId), `attesta:freeze:${agent.agentId}:${l.controlId}:sepolia:${l.txHash}`, fields);
     } else if (cfg.autoUnfreeze && (await deps.failingCount(l.agentId)) === 0n) {
       await drive(agent, false, reasonCode(l.controlId), `attesta:unfreeze:${agent.agentId}:${l.controlId}:sepolia:${l.txHash}`, fields);
     }
@@ -155,13 +184,14 @@ export async function tick(cfg: Config, deps: Deps, state: State): Promise<void>
   if (cfg.reconcile === false) return;
   for (const [hash, agent] of cfg.agents) {
     try {
-      const failing = await deps.failingCount(hash);
-      if (failing > 0n) {
-        await drive(agent, true, 0, `attesta:reconcile:${agent.agentId}:failingCount=${failing}`, {
-          reconcile: true,
-          failingCount: failing.toString(),
-        });
-      }
+      const failing = await deps.failingResults(hash);
+      if (failing.length === 0) continue;
+      const newest = failing.reduce((a, b) => (b.ts > a.ts ? b : a));
+      await freezeIfNewer(agent, newest.ts, reasonCode(newest.controlId), `attesta:reconcile:${agent.agentId}:${newest.controlId}:ts=${newest.ts}`, {
+        reconcile: true,
+        controlId: newest.controlId,
+        resultTs: newest.ts.toString(),
+      });
     } catch (e) {
       deps.log("error", { reconcile: agent.agentId, lastError: (e as Error)?.message ?? String(e) });
     }
