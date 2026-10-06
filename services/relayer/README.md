@@ -2,8 +2,14 @@
 
 Two jobs for the Solana leg of Attesta.
 
-- **Relayer** (`npm run relay`): watches `ControlResult` events on the Sepolia `AttestationRegistry`. When a control fails for an agent that lives on Solana, it calls `set_frozen(true)` on the `attesta_guard` program. With `AUTO_UNFREEZE=1`, a later PASS unfreezes the agent once the registry's `failingCount` for it is 0.
+- **Relayer** (`npm run relay`): watches `ControlResult` events on the Sepolia `AttestationRegistry`. When a control fails for an agent that lives on Solana, it calls `set_frozen(true)` on the `attesta_guard` program. It never unfreezes by default (see below).
 - **Solana collector** (`npm run collect`): reads the guard's `SpendEvent` logs for one agent and prints `SpendRecord[]` (see `services/shared/spend-record.ts`) for the CRE workflow.
+
+## Unfreeze is manual
+
+`AUTO_UNFREEZE` defaults to off. Control ATT-FRZ-05 requires a frozen agent to stay frozen until a person unfreezes it, so the relayer only ever freezes. To unfreeze, a person runs `pnpm unfreeze` in `programs/solana` with the authority key.
+
+`AUTO_UNFREEZE=1` exists for local testing only. With it, a PASS unfreezes the agent once the registry's `failingCount` for it is 0. Do not set it in the demo or any shared environment.
 
 ## Evidence link
 
@@ -47,7 +53,7 @@ It deploys the registry on anvil with account 0 as the forwarder, then checks fo
 
 1. FAIL leads to a freeze, and the next spend fails with `AgentFrozen`.
 2. A re-run sends no duplicate transaction.
-3. PASS leads to an unfreeze, and the next spend succeeds.
+3. With `AUTO_UNFREEZE=1` (test only), PASS leads to an unfreeze, and the next spend succeeds.
 4. The collector returns exactly the two successful spends.
 
 Last run on 2026-10-06: all four passed.

@@ -5,6 +5,9 @@
  *   pass=false -> set_frozen(true)
  *   pass=true and AUTO_UNFREEZE=1 and registry.failingCount(agent)==0 -> set_frozen(false)
  *
+ * AUTO_UNFREEZE defaults to off: ATT-FRZ-05 requires a person to unfreeze
+ * (`pnpm unfreeze` in programs/solana). Set it to 1 only in local tests.
+ *
  * Idempotent: a log is handled once (cursor + seen set in the state file), and
  * the guard is only written when its on-chain `frozen` differs from the target.
  * Every action prints one JSON line with the Sepolia tx hash and Solana sig.
