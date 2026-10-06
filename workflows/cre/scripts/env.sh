@@ -10,6 +10,11 @@ pk=$(jq -r '.[0].private_key' "$S/sepolia-deployer.json")
   echo "CRE_ETH_PRIVATE_KEY=${pk#0x}"
   echo "CRE_TARGET=staging-settings"
   [ -f "$S/cre.env" ] && grep -E '^(CRE_API_KEY|SEPOLIA_RPC_URL|SOLANA_RPC_API_KEY)=' "$S/cre.env" || true
-  grep -qs '^SEPOLIA_RPC_URL=' "$S/cre.env" || echo "SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com"
+  # RPC precedence: SEPOLIA_RPC_URL in cre.env > NOWNodes key (path form, CRE rpcs take no headers) > PublicNode.
+  if ! grep -qs '^SEPOLIA_RPC_URL=' "$S/cre.env"; then
+    nn=$(grep -hsE '^(NOWNODES_API_KEY|NOWNODES_KEY|API_KEY)=' "$S/nownodes.env" | head -1 | cut -d= -f2- | tr -d '"' || true)
+    if [ -n "$nn" ]; then echo "SEPOLIA_RPC_URL=https://eth-sepolia.nownodes.io/$nn"
+    else echo "SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com"; fi
+  fi
 } > "$S/cre-sim.env"
 echo "$S/cre-sim.env"
