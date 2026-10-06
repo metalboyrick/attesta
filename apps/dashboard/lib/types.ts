@@ -1,3 +1,5 @@
+import type { SafetyScore } from "./score.ts";
+
 export type Chain = "sepolia" | "solana-devnet" | "cardano-preprod";
 export type AgentStatus = "compliant" | "failing" | "frozen" | "unknown";
 
@@ -47,6 +49,7 @@ export type AgentView = AgentDef & {
   /** latest result per control id; missing = never reported */
   latest: Record<string, ControlResult | undefined>;
   failing: string[];
+  safety: SafetyScore;
 };
 
 export type Snapshot = {

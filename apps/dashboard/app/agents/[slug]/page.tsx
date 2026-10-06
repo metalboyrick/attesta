@@ -7,6 +7,8 @@ import { Ago, CopyHash } from "@/components/client";
 import { FrameworkIds } from "@/components/frameworks";
 import { SourceBar } from "@/components/source";
 import { PassMark, StatusPill } from "@/components/status";
+import { SafetyScoreBadge } from "@/components/score";
+import { SCORE_DEFINITION } from "@/lib/score";
 import { getSnapshot } from "@/lib/snapshot";
 import type { ControlDef } from "@/lib/types";
 
@@ -71,12 +73,17 @@ export default async function AgentPage({ params }: { params: Promise<{ slug: st
           </div>
         </div>
         <div className="flex flex-col items-start gap-2 sm:items-end">
-          <StatusPill status={agent.status} size="lg" />
+          <div className="flex items-center gap-2">
+            <SafetyScoreBadge s={agent.safety} frozen={agent.frozen} synthetic={snap.mode === "fixture"} size="lg" />
+            {!agent.frozen && <StatusPill status={agent.status} size="lg" />}
+          </div>
           <span className="text-xs text-ink-3">
             Last run {agent.lastRun ? <Ago ts={agent.lastRun} serverNow={snap.generatedAt} /> : "never"}
           </span>
         </div>
       </div>
+
+      <p className="mt-4 max-w-[70ch] text-xs text-ink-3">{SCORE_DEFINITION}</p>
 
       {agent.frozen && (
         <section aria-label="Guard freeze" className="mt-8 rounded-lg bg-frozen-bg px-5 py-4 text-frozen-fg">

@@ -4,6 +4,8 @@ import { ChainTag } from "@/components/chain";
 import { Ago } from "@/components/client";
 import { SourceBar } from "@/components/source";
 import { StatusPill } from "@/components/status";
+import { SafetyScoreBadge } from "@/components/score";
+import { SCORE_DEFINITION } from "@/lib/score";
 import { getSnapshot } from "@/lib/snapshot";
 import type { AgentView, Snapshot } from "@/lib/types";
 
@@ -55,33 +57,36 @@ export default async function FleetPage() {
       <ul className="mt-10 divide-y divide-rule border-y border-rule">
         {snap.agents.map(agent => (
           <li key={agent.slug}>
-            <Link
-              href={`/agents/${agent.slug}`}
-              className="group grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-3 py-5 transition-colors hover:bg-surface md:grid-cols-[minmax(0,1.4fr)_auto_minmax(0,0.9fr)_auto] md:gap-x-8 md:px-3"
-            >
-              <div className="min-w-0">
-                <div className="flex items-baseline gap-3">
-                  <span className="text-lg font-semibold tracking-tight">{agent.name}</span>
+            {/* Row is a div with a stretched link so the score disclosure can stay a separate control. */}
+            <div className="group relative grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-3 py-5 transition-colors hover:bg-surface md:grid-cols-[minmax(0,1fr)_8.5rem_15rem_7.5rem] md:gap-x-8 md:px-3">
+              <div className="order-1 min-w-0">
+                <div className="flex flex-wrap items-baseline gap-x-3">
+                  <Link href={`/agents/${agent.slug}`} className="text-lg font-semibold tracking-tight after:absolute after:inset-0">
+                    {agent.name}
+                  </Link>
                   <ChainTag chain={agent.chain} />
                 </div>
                 <p className="mt-0.5 truncate text-sm text-ink-3">{agent.role}</p>
               </div>
-              <div className="justify-self-end md:order-3 md:justify-self-start">
-                <StatusPill status={agent.status} />
+              <div className="order-4 flex items-center gap-2 justify-self-end md:order-3 md:justify-self-start">
+                <SafetyScoreBadge s={agent.safety} frozen={agent.frozen} synthetic={snap.mode === "fixture"} />
+                {!agent.frozen && <StatusPill status={agent.status} />}
               </div>
-              <div className="md:order-2">
+              <div className="order-3 md:order-2">
                 <ControlStrip agent={agent} snap={snap} />
               </div>
-              <div className="flex items-center justify-end gap-3 text-sm text-ink-3 md:order-4">
+              <div className="order-2 flex items-center justify-end gap-3 self-start text-sm text-ink-3 md:order-4 md:self-center">
                 <span className="tnum">
                   {agent.lastRun ? <Ago ts={agent.lastRun} serverNow={snap.generatedAt} /> : "Never run"}
                 </span>
                 <CaretRight aria-hidden className="size-4 transition-transform duration-200 ease-out group-hover:translate-x-0.5" />
               </div>
-            </Link>
+            </div>
           </li>
         ))}
       </ul>
+
+      <p className="mt-3 max-w-[70ch] text-xs text-ink-3">{SCORE_DEFINITION} Tap a score to see the transactions behind it.</p>
 
       <dl className="mt-10 grid grid-cols-3 gap-4 md:max-w-2xl">
         {[

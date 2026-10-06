@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "prebuild": "node scripts/sync-catalog.mjs"
+    "prebuild": "node scripts/sync-catalog.mjs",
+    "test": "node --test lib/*.test.ts"
   },
   "dependencies": {
     "@phosphor-icons/react": "2.1.10",

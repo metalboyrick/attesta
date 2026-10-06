@@ -1,5 +1,6 @@
 import { registryAddress } from "@/lib/env";
 import { evidenceRows, toCsv } from "@/lib/evidence";
+import { SCORE_DEFINITION } from "@/lib/score";
 import { getSnapshot } from "@/lib/snapshot";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +30,17 @@ export async function GET(req: Request) {
     notes: snap.notes,
     errors: snap.errors,
     scope: { agent: agent ?? "all", results: latestOnly ? "latest per control" : "full history" },
-    agents: snap.agents.map(a => ({ slug: a.slug, name: a.name, registryId: a.registryId, chain: a.chain, status: a.status, failing: a.failing })),
+    agents: snap.agents.map(a => ({
+      slug: a.slug,
+      name: a.name,
+      registryId: a.registryId,
+      chain: a.chain,
+      status: a.status,
+      frozen: a.frozen,
+      failing: a.failing,
+      safetyScore: { score: a.safety.score, passed: a.safety.passed, tested: a.safety.tested, basisTxs: a.safety.basis.map(b => ({ control: b.controlId, pass: b.pass, txHash: b.txHash })) },
+    })),
+    safetyScoreDefinition: SCORE_DEFINITION,
     controls: snap.controls,
     results: rows,
   };

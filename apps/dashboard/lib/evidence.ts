@@ -15,6 +15,10 @@ export type EvidenceRow = {
   iso42001: string[];
   /** "fixture" rows carry synthetic hashes and must not be used as evidence */
   dataMode: Snapshot["mode"];
+  /** agent-level score from latest registry results; null = nothing tested */
+  safetyScore: number | null;
+  /** "passed/tested" behind safetyScore */
+  safetyBasis: string;
 };
 
 export function evidenceRows(snap: Snapshot, opts: { agent?: string; latestOnly?: boolean } = {}): EvidenceRow[] {
@@ -41,6 +45,8 @@ export function evidenceRows(snap: Snapshot, opts: { agent?: string; latestOnly?
         soc2: c?.soc2 ?? [],
         iso42001: c?.iso42001 ?? [],
         dataMode: snap.mode,
+        safetyScore: agents.get(r.agentSlug)?.safety.score ?? null,
+        safetyBasis: (s => (s ? `${s.passed}/${s.tested}` : ""))(agents.get(r.agentSlug)?.safety),
       };
     })
     .sort((a, b) => b.ts - a.ts || a.agent.localeCompare(b.agent) || a.control.localeCompare(b.control));
@@ -49,9 +55,9 @@ export function evidenceRows(snap: Snapshot, opts: { agent?: string; latestOnly?
 const cell = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
 
 export function toCsv(rows: EvidenceRow[]): string {
-  const header = ["control", "control_title", "agent", "agent_registry_id", "pass", "evidence_hash", "tx_hash", "chain", "ts", "ts_iso", "soc2_tsc", "iso_42001", "data_mode"];
+  const header = ["control", "control_title", "agent", "agent_registry_id", "pass", "evidence_hash", "tx_hash", "chain", "ts", "ts_iso", "soc2_tsc", "iso_42001", "data_mode", "safety_score", "safety_basis"];
   const lines = rows.map(r =>
-    [r.control, r.controlTitle, r.agent, r.agentRegistryId, String(r.pass), r.evidenceHash, r.txHash, r.chain, String(r.ts), r.tsIso, r.soc2.join(" "), r.iso42001.join(" "), r.dataMode]
+    [r.control, r.controlTitle, r.agent, r.agentRegistryId, String(r.pass), r.evidenceHash, r.txHash, r.chain, String(r.ts), r.tsIso, r.soc2.join(" "), r.iso42001.join(" "), r.dataMode, r.safetyScore === null ? "" : String(r.safetyScore), r.safetyBasis]
       .map(cell)
       .join(","),
   );

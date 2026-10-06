@@ -4,6 +4,7 @@ import { AGENTS } from "./agents";
 import { loadCatalog } from "./catalog";
 import { fixtureData } from "./fixture";
 import { liveData } from "./live";
+import { safetyScore } from "./score";
 import type { AgentView, ControlResult, Snapshot } from "./types";
 
 export function dataMode(): "fixture" | "live" {
@@ -28,6 +29,7 @@ function buildAgents(results: ControlResult[], frozen: Record<string, boolean>):
       latest,
       failing,
       frozen: isFrozen,
+      safety: safetyScore(latest),
       lastRun: all.length ? Math.max(...all.map(r => r.ts)) : null,
       // Mirrors AttestationRegistry.isCompliant: needs at least one result and zero failing.
       status: isFrozen ? "frozen" : !all.length ? "unknown" : failing.length ? "failing" : "compliant",
