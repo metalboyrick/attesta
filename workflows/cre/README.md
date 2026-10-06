@@ -17,7 +17,7 @@ A Chainlink CRE workflow with a cron trigger. Each run collects evidence for eve
 
 ## Registry v2 run (6 Oct 2026, 17:51 UTC)
 
-The first run against v2. Agent-2's off-allowlist spends from Table B are still inside its window (no unfreeze since), so ATT-CPTY-02 fails again. That run stopped before agent-3's writes, so agent-3 has no v2 result yet and `isCompliant(agent-3)` is false on v2 until the next run.
+The first run against v2. Agent-2's off-allowlist spends from Table B are still inside its window (no unfreeze since), so ATT-CPTY-02 fails again. That run stopped before agent-3's writes. An agent-3-only run at 17:55 UTC filled them in, and agent-3 is compliant on v2.
 
 **Table V2. Registry v2 txs**
 
@@ -29,6 +29,10 @@ The first run against v2. Agent-2's off-allowlist spends from Table B are still 
 | attesta-demo-agent-2 | ATT-SPEND-01 | PASS | [0xb203cf14...](https://sepolia.etherscan.io/tx/0xb203cf14903b46fed0bb15c0b916bd55f5d8d4774770bd788a7bf38059f5c286) |
 | attesta-demo-agent-2 | ATT-CPTY-02 | **FAIL** | [0x3deba58e...](https://sepolia.etherscan.io/tx/0x3deba58eb5840585f550fba8a61815153813c70acda1ce637204edeb7523748b) |
 | attesta-demo-agent-2 | ATT-KEY-03 | PASS | [0x6b5fafbd...](https://sepolia.etherscan.io/tx/0x6b5fafbd472e78cdb4cfe2efd5e143ac40d7ede31aba2b2d6549a77ea22e722f) |
+| attesta-demo-agent-3 | ATT-SPEND-01 | PASS | [0xd8faa288...](https://sepolia.etherscan.io/tx/0xd8faa2884d27e3d60114666dadd8dce1b58e3c86fac3de44be37c63a7d5925ef) (agent-3-only run, 17:55 UTC) |
+| attesta-demo-agent-3 | ATT-CPTY-02 | PASS | [0x5fae4066...](https://sepolia.etherscan.io/tx/0x5fae40666bef6ac82ff501666a5ba7b2a3bd49c11d353668bb4136d55ebf7bf6) (agent-3-only run) |
+
+**Run time.** Measured wall clock from `simulate.sh` start to the last receipt: the agent-3-only run (2 writes) took 37 s. About 11 s is startup (dependency check, WASM compile, simulator init), then each write waits for its own receipt, about 12 s per Sepolia block, one after another. Expect about 50 s for an agent-2-only run (3 writes) and about 110 s for a full run (8 writes).
 
 ## First broadcast run, v1 registry (6 Oct 2026, 17:30 UTC)
 
