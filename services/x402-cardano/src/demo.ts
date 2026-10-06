@@ -23,11 +23,11 @@ async function waitForSeller(timeoutMs = 15_000): Promise<void> {
   throw new Error("Seller did not start in time");
 }
 
-const seller = spawn("npx", ["tsx", "src/seller.ts"], { stdio: ["ignore", "inherit", "inherit"] });
+const seller = spawn(process.execPath, ["--import", "tsx", "src/seller.ts"], { stdio: ["ignore", "inherit", "inherit"] });
 
 try {
   await waitForSeller();
-  const buyer = spawn("npx", ["tsx", "src/buyer.ts", ...process.argv.slice(2)], { stdio: ["ignore", "inherit", "inherit"] });
+  const buyer = spawn(process.execPath, ["--import", "tsx", "src/buyer.ts", ...process.argv.slice(2)], { stdio: ["ignore", "inherit", "inherit"] });
   const code: number = await new Promise(resolve => buyer.on("close", resolve));
   process.exitCode = code ?? 1;
 } finally {

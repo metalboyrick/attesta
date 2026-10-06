@@ -74,7 +74,7 @@ The buyer generates a nonce per run and prints it. `BUYER_NONCE=<nonce> npm run 
 
 ## Pricing in tADA or tUSDM
 
-`PRICE_ASSET=usdm` prices one check at `PRICE_USDM` (default `1000000`, which is 1 tUSDM at 6 decimals) of `USDM_UNIT`. Default unit: `16a55b2a349361ff88c03788f93e1e966e5d689605d044fef722ddde.0014df10745553444d`, the Moneta-registered preprod tUSDM that Masumi's TOKEN2049 guide uses. `@x402/cardano` 2.28.0 ships a different preprod USDM (`e675b46e4d2242c991a8932a99db3044e80515ae14b4c4ccf6b3f4c9.0014df10745553444d`). The buyer's spend controls allow both, capped at 2 tUSDM. Unset `PRICE_ASSET` keeps 1 tADA. A tUSDM payment still needs tADA in the buyer wallet for the fee and the min-UTxO that travels with the token.
+`PRICE_ASSET=usdm` prices one check at `PRICE_USDM` (default `1000000`, which is 1 tUSDM at 6 decimals) of `USDM_UNIT`. Default unit: `e675b46e4d2242c991a8932a99db3044e80515ae14b4c4ccf6b3f4c9.0014df10745553444d`, the preprod USDM built into `@x402/cardano` 2.28.0. It's also what the [tUSDM faucet](https://tusdm.moneta.global) sent us on 6 Oct. Masumi's TOKEN2049 guide uses a different preprod tUSDM, `16a55b2a349361ff88c03788f93e1e966e5d689605d044fef722ddde.0014df10745553444d`. The buyer's spend controls allow both, capped at 2 tUSDM. The token output also carries its min-UTxO in tADA (1.17663 tADA in our run), which the buyer pays and the seller receives. Unset `PRICE_ASSET` keeps 1 tADA. A tUSDM payment still needs tADA in the buyer wallet for the fee and the min-UTxO that travels with the token.
 
 ## Spend collector (monitored agent #3)
 
@@ -98,13 +98,20 @@ docker run --rm -p 127.0.0.1:4021:4021 -e SELLER_ADDRESS=addr_test1... attesta-x
 
 ## Proof on preprod
 
-| Item | Value |
+All three payments ran on 6 Oct 2026 through the hosted Cardano Foundation facilitator, signed by the Evolution SDK buyer. Each was confirmed with 1 block (`"status": "confirmed"` in the receipt) and checked on chain through Koios. Attestation data was the stub source.
+
+| What | Tx | Paid to seller |
+| --- | --- | --- |
+| First paid check, `attesta-demo-agent-3`, DEAL (HTTP 200 after 28.9 s) | [2abdf809…f8c7](https://preprod.cardanoscan.io/transaction/2abdf809e04f43fdfdd231517d34d0daf9af4773288bf51cf6cbb4f01400f8c7) | 1 tADA, fee 0.168581 |
+| `retry-demo.sh`: one payment, then 2 replays with the same nonce (balance 10003.831419 to 10002.662838 tADA, exactly 1 payment + 1 fee) | [9d963e2c…93e0](https://preprod.cardanoscan.io/transaction/9d963e2c3e14edee4832774bd9251c58fc92e6084ab1435bd4310b2a2b1a93e0) | 1 tADA, fee 0.168581 |
+| tUSDM-priced check, `rogue-bot`, `DECLINE SP-03-spend-limits` (HTTP 200 after 32.7 s) | [08c9cf69…8d43](https://preprod.cardanoscan.io/transaction/08c9cf69eb964f1b22a121aef521137977a4d557ba543d84f06d7c3182d88d43) | 1 tUSDM + 1.17663 tADA min-UTxO, fee 0.172629 |
+
+| Wallet | Address |
 | --- | --- |
-| Buyer address | `addr_test1qz26gtjxv36378vqv40un4w6qjnfz09gcw6lz7jyus0q0f79a85l60732tzxdgzvhepwyuh0sn0rpwzkermlmhkhm7rq2qc2rg` |
-| Seller address | `addr_test1qztvnhavscfaupuwy824jem5z8dxavkzz6ukg4xyzls3gn2mejfgg4sl7sj4rdxxdnzsqvpkzwu0v39338t9aj6p6q7stjznf6` |
-| Paid request tx | pending: buyer wallet not funded yet |
+| Buyer (agent-3) | [addr_test1qz26gtjx…2qc2rg](https://preprod.cardanoscan.io/address/addr_test1qz26gtjxv36378vqv40un4w6qjnfz09gcw6lz7jyus0q0f79a85l60732tzxdgzvhepwyuh0sn0rpwzkermlmhkhm7rq2qc2rg) |
+| Seller | [addr_test1qztvnhav…tjznf6](https://preprod.cardanoscan.io/address/addr_test1qztvnhavscfaupuwy824jem5z8dxavkzz6ukg4xyzls3gn2mejfgg4sl7sj4rdxxdnzsqvpkzwu0v39338t9aj6p6q7stjznf6) |
 
 ## Known issues
 
-- **Facilitator re-encoding.** Our prior research flagged an upstream report that the facilitator re-encodes the signed transaction, which breaks clients not built on the Evolution SDK. We could not re-find the issue (coinbase/x402 has issues disabled). The buyer here uses the package's own Evolution signer, which is the path the template tests.
+- **Facilitator re-encoding.** Our prior research flagged an upstream report that the facilitator re-encodes the signed transaction, which breaks clients not built on the Evolution SDK. We could not re-find the issue (coinbase/x402 has issues disabled). With the package's own Evolution signer, all three payments above settled through the hosted facilitator.
 - **Double pay on timeout.** If the buyer exits without a receipt, the payment may still settle. Check the buyer address on [preprod.cardanoscan.io](https://preprod.cardanoscan.io) before rerunning.
