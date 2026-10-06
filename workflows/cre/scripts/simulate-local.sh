@@ -27,7 +27,8 @@ set -e
   echo
   echo '```text'
   # strip ANSI colour codes
-  sed -e 's/\x1b\[[0-9;]*m//g' "$log"
+  # also redact any RPC key that sits in a URL path (NOWNodes)
+  sed -e 's/\x1b\[[0-9;]*m//g' -e 's#\(nownodes\.io/\)[^ /"]*#\1<redacted>#g' "$log"
   echo '```'
 } > SIMULATION.md
 rm -f "$log"
