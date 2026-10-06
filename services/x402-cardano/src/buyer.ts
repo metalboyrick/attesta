@@ -63,11 +63,16 @@ async function main() {
   }
 
   const failing = attestation.controls.filter(c => !c.pass).map(c => c.id);
+  // Short verdict first, bold and coloured on a terminal, for the stage demo.
+  const banner = (text: string, color: number) =>
+    process.stdout.isTTY ? `\x1b[1;${color}m${text}\x1b[0m` : text;
   if (attestation.compliant) {
-    console.log(`\nDEAL: ${agentId} is compliant (${attestation.controls.length} controls, source ${attestation.source})`);
+    console.log(`\n${banner("DEAL", 32)}`);
+    console.log(`${agentId} is compliant (${attestation.controls.length} controls, source ${attestation.source})`);
   } else {
     const why = failing.length ? `failing ${failing.join(", ")}` : "no recorded controls";
-    console.log(`\nDECLINE: ${agentId} is not compliant (${why}, source ${attestation.source})`);
+    console.log(`\n${banner(`DECLINE ${failing.join(" ") || "NO-CONTROLS"}`, 31)}`);
+    console.log(`${agentId} is not compliant (${why}, source ${attestation.source})`);
     process.exitCode = 2;
   }
 }
