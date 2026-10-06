@@ -100,14 +100,14 @@ async function fromRegistry(agentId: string): Promise<Attestation> {
   };
 }
 
-const STUB_CONTROL_IDS = ["AC-01-key-custody", "AU-02-action-logging", "SP-03-spend-limits"];
+const STUB_CONTROL_IDS = ["ATT-SPEND-01", "ATT-CPTY-02", "ATT-KEY-03"];
 
 function fromStub(agentId: string): Attestation {
   const ts = Math.floor(Date.now() / 1000);
-  // Agent ids containing "rogue" fail a control, so the demo can show DECLINE.
-  const controls = STUB_CONTROL_IDS.map((id, i) => ({
+  // Agent ids containing "rogue" fail ATT-CPTY-02, so the demo can show DECLINE.
+  const controls = STUB_CONTROL_IDS.map(id => ({
     id,
-    pass: !(agentId.includes("rogue") && i === STUB_CONTROL_IDS.length - 1),
+    pass: !(agentId.includes("rogue") && id === "ATT-CPTY-02"),
     evidenceHash: "0x" + createHash("sha256").update(`${agentId}:${id}`).digest("hex"),
     ts,
   }));
