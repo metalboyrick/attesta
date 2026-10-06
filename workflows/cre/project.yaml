@@ -1,0 +1,5 @@
+# CRE project settings. RPC is the public PublicNode Sepolia endpoint (no key).
+staging-settings:
+  rpcs:
+    - chain-name: ethereum-testnet-sepolia
+      url: https://ethereum-sepolia-rpc.publicnode.com

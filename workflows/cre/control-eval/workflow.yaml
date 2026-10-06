@@ -1,0 +1,8 @@
+# CRE workflow settings. `cre workflow simulate control-eval --target staging-settings`
+staging-settings:
+  user-workflow:
+    workflow-name: "attesta-control-eval-staging"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.staging.json"
+    secrets-path: ""

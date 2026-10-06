@@ -1,0 +1,12 @@
+{
+  "schedule": "0 */5 * * * *",
+  "chainSelectorName": "ethereum-testnet-sepolia",
+  "registryAddress": "0x0000000000000000000000000000000000000000",
+  "gasLimit": "500000",
+  "agentId": "attesta-demo-agent-1",
+  "control": {
+    "id": "ATT-SPEND-01",
+    "observedDailySpendUsd": 420,
+    "dailySpendCapUsd": 1000
+  }
+}
