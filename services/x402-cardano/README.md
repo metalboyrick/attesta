@@ -98,7 +98,7 @@ docker run --rm -p 127.0.0.1:4021:4021 -e SELLER_ADDRESS=addr_test1... attesta-x
 
 ## Proof on preprod
 
-All payments ran on 6 Oct 2026 through the hosted Cardano Foundation facilitator, signed by the Evolution SDK buyer. Each was confirmed with 1 block (`"status": "confirmed"` in the receipt) and checked on chain through Koios. Rows 1 to 3 used the stub attestation source. Row 4 read the live Sepolia `AttestationRegistry`.
+All payments ran on 6 Oct 2026 through the hosted Cardano Foundation facilitator, signed by the Evolution SDK buyer. Each was confirmed with 1 block (`"status": "confirmed"` in the receipt) and checked on chain through Koios. Rows 1 to 3 used the stub attestation source. Rows 4 and 5 read the live Sepolia `AttestationRegistry`.
 
 | What | Tx | Paid to seller |
 | --- | --- | --- |
@@ -106,6 +106,7 @@ All payments ran on 6 Oct 2026 through the hosted Cardano Foundation facilitator
 | `retry-demo.sh`: one payment, then 2 replays with the same nonce (balance 10003.831419 to 10002.662838 tADA, exactly 1 payment + 1 fee) | [9d963e2c…93e0](https://preprod.cardanoscan.io/transaction/9d963e2c3e14edee4832774bd9251c58fc92e6084ab1435bd4310b2a2b1a93e0) | 1 tADA, fee 0.168581 |
 | tUSDM-priced check, `rogue-bot` (stub), `DECLINE SP-03-spend-limits` (HTTP 200 after 32.7 s) | [08c9cf69…8d43](https://preprod.cardanoscan.io/transaction/08c9cf69eb964f1b22a121aef521137977a4d557ba543d84f06d7c3182d88d43) | 1 tUSDM + 1.17663 tADA min-UTxO, fee 0.172629 |
 | Live registry check, `attesta-demo-agent-3`, `source: sepolia:0xbc675484a8c2c51174efb8b5369250eb8337750d`, ATT-SPEND-01 and ATT-CPTY-02 pass, DEAL (HTTP 200 after 57.7 s) | [c47d4c06…5662](https://preprod.cardanoscan.io/transaction/c47d4c065600bf15095cb4161b0a28c496d76f3e4bfc9cca08ffca1fe5cc5662) | 1 tADA |
+| Live registry check, `attesta-demo-agent-2`, ATT-CPTY-02 failing (written by the CRE workflow), `DECLINE ATT-CPTY-02` (HTTP 200 after 60.9 s) | [65f62578…5f1b](https://preprod.cardanoscan.io/transaction/65f625780354381effea68636d851527becf44dc54c4b337f03bbf19711f5f1b) | 1 tADA |
 
 | Wallet | Address |
 | --- | --- |
