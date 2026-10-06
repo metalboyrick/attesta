@@ -9,13 +9,20 @@
  * The counterparty then decides: DEAL when the agent is compliant, DECLINE
  * otherwise (exit code 0 for DEAL, 2 for DECLINE, 1 for errors).
  *
- * Usage: npm run buyer -- [agentId]
+ * Every request carries a buyer nonce (?nonce=). The seller binds the payment
+ * to (agentId, nonce): rerunning with the same BUYER_NONCE returns the same
+ * receipt without paying again, and while that payment is still settling the
+ * seller answers 409 and the buyer waits instead of signing a second one.
+ *
+ * Usage: [BUYER_NONCE=...] npm run buyer -- [agentId]
  */
+import { randomUUID } from "node:crypto";
 import { x402Client, wrapFetchWithPayment, x402HTTPClient } from "@x402/fetch";
-import { toClientCardanoSigner } from "@x402/cardano";
+import { toClientCardanoSigner, USDM_PREPROD_ASSET } from "@x402/cardano";
 import { ExactCardanoScheme } from "@x402/cardano/exact/client";
 import { NETWORK, provider } from "./env.js";
 import type { Attestation } from "./attestation.js";
+import { TUSDM_MASUMI_UNIT } from "./pricing.js";
 
 if (!process.env.MNEMONIC) {
   console.error("MNEMONIC not found; run `npm run wallet` to create ~/.attesta-secrets/cardano-preprod.env");
@@ -24,13 +31,19 @@ if (!process.env.MNEMONIC) {
 const mnemonic: string = process.env.MNEMONIC;
 
 const agentId = process.argv[2] ?? "agent-demo-001";
-const url = `${process.env.SELLER_URL ?? "http://localhost:4021"}/attest/${encodeURIComponent(agentId)}`;
+const nonce = process.env.BUYER_NONCE ?? randomUUID();
+const url = `${process.env.SELLER_URL ?? "http://localhost:4021"}/attest/${encodeURIComponent(agentId)}?nonce=${encodeURIComponent(nonce)}`;
+const SETTLE_WAIT_MS = 180_000;
 
 async function main() {
-  // lovelace is not USD-pegged, so the default spend controls would reject
-  // it; allow it explicitly, capped at 2 tADA per payment.
+  // Neither tADA nor either preprod tUSDM is in the default USD spend table,
+  // so allow them explicitly: at most 2 tADA or 2 tUSDM per payment.
   const client = new x402Client().setSpendControls({
-    allowedAssets: [{ network: "cardano:*", asset: "lovelace", maxAmountPerPayment: "2000000" }],
+    allowedAssets: [
+      { network: "cardano:*", asset: "lovelace", maxAmountPerPayment: "2000000" },
+      { network: "cardano:*", asset: TUSDM_MASUMI_UNIT, maxAmountPerPayment: "2000000" },
+      { network: "cardano:*", asset: USDM_PREPROD_ASSET, maxAmountPerPayment: "2000000" },
+    ],
   });
 
   const signer = toClientCardanoSigner({ mnemonic, network: NETWORK, provider: provider() });
@@ -39,9 +52,18 @@ async function main() {
 
   const fetchWithPayment = wrapFetchWithPayment(fetch, client);
 
+  console.log(`Nonce: ${nonce}  (rerun with BUYER_NONCE=${nonce} to replay without paying)`);
   console.log(`Requesting ${url} ...`);
   const started = Date.now();
-  const response = await fetchWithPayment(url, { method: "GET" });
+  let response = await fetchWithPayment(url, { method: "GET" });
+  // 409: this nonce's payment is still settling. Wait for it; never pay twice.
+  while (response.status === 409 && Date.now() - started < SETTLE_WAIT_MS) {
+    const wait = Number(response.headers.get("retry-after") ?? 15) * 1000;
+    console.log(`Payment for this nonce is still settling; checking again in ${wait / 1000}s`);
+    await new Promise(r => setTimeout(r, wait));
+    response = await fetchWithPayment(url, { method: "GET" });
+  }
+  if (response.headers.get("x-attesta-replay")) console.log("Replayed stored receipt: no new payment");
   console.log(`\nHTTP ${response.status} after ${((Date.now() - started) / 1000).toFixed(1)}s`);
 
   if (!response.ok) {

@@ -57,6 +57,25 @@ On Koios the facilitator cannot read confirmation depth, so it advertises `l1Con
 - **Attestation source.** With `ATTESTA_REGISTRY_ADDRESS` and `SEPOLIA_RPC_URL` set, `src/attestation.ts` reads `contracts/evm/src/AttestationRegistry.sol` through viem: `isCompliant`, `getControls`, then `getResult` per control. `source` is then `sepolia:<address>`. Without them it returns stub data and `source` is `"stub"`. The agentId in the URL maps to the registry's `bytes32` key by keccak256 of the UTF-8 string (`AGENT_ID_ENCODING=utf8` switches to right-padded bytes); a raw `0x` 32-byte hex id passes through. This matches `id32` in `workflows/cre/control-eval/workflow.ts`. That workflow also hashes control ids, so the seller maps hashes back to labels listed in `ATTESTA_CONTROL_IDS` (default: every id in `controls/catalog.json`); ids stored as padded ASCII also read back as text, and anything else stays hex.
 - **Registry failure.** If the registry read throws, the seller answers 502 and x402 cancels settlement, so the buyer is not charged. The read path was tested against the compiled contract on a local anvil node; it has not run against a Sepolia deployment yet.
 
+## One payment per request, safe retries
+
+Each buyer request carries a nonce: `GET /attest/:agentId?nonce=<8-128 chars of A-Za-z0-9_->`. The seller binds the Cardano payment to that `(agentId, nonce)` pair (`src/receipts.ts`):
+
+- **Retry after success.** The same nonce returns the stored response and the same `PAYMENT-RESPONSE` receipt, with header `X-Attesta-Replay: 1`. No 402 and no new payment.
+- **Retry while settling.** If the first payment is still settling (`settlement_pending`), the seller answers 409 with `Retry-After`. The buyer waits instead of signing a second payment. Once Koios shows the tx on chain, the nonce flips to settled and the retry gets the stored receipt.
+- **One tx, one request.** A signed transaction that already paid for one `(agentId, nonce)` is refused for any other one before settlement. The tx hash is decoded from the payment itself.
+- **Failed payment.** If the payment never reached the chain, the nonce is freed for a fresh try.
+
+The agentId and nonce come from the request the server saw, not from the payment payload. Receipts persist to `RECEIPTS_FILE` (default `.data/receipts.json`), so a restart keeps them. It's a single-process store; replicas would need a shared one.
+
+The buyer generates a nonce per run and prints it. `BUYER_NONCE=<nonce> npm run buyer -- <agentId>` replays it. `scripts/retry-demo.sh [agentId]` runs one paid request and two retries with the same nonce, and prints the buyer balance before and after.
+
+`npm test` covers this end to end: the real seller process, a mock facilitator, and real preprod transactions from Koios as payment payloads (nothing is broadcast). Four tests pass: replay without a second payment, the same tx refused for a second nonce, a pending payment picked up from chain on retry, and a bad nonce refused.
+
+## Pricing in tADA or tUSDM
+
+`PRICE_ASSET=usdm` prices one check at `PRICE_USDM` (default `1000000`, which is 1 tUSDM at 6 decimals) of `USDM_UNIT`. Default unit: `16a55b2a349361ff88c03788f93e1e966e5d689605d044fef722ddde.0014df10745553444d`, the Moneta-registered preprod tUSDM that Masumi's TOKEN2049 guide uses. `@x402/cardano` 2.28.0 ships a different preprod USDM (`e675b46e4d2242c991a8932a99db3044e80515ae14b4c4ccf6b3f4c9.0014df10745553444d`). The buyer's spend controls allow both, capped at 2 tUSDM. Unset `PRICE_ASSET` keeps 1 tADA. A tUSDM payment still needs tADA in the buyer wallet for the fee and the min-UTxO that travels with the token.
+
 ## Spend collector (monitored agent #3)
 
 `npm run collect -- <agentId> <address> [sinceUnixSeconds]` reads a preprod wallet's transactions from Koios and prints `SpendRecord[]` (type in `services/shared/spend-record.ts`, shared with the EVM and Solana collectors). A transaction counts when one of its inputs carries the agent's payment credential. Each output to another credential becomes one record per asset; change (same payment credential, any stake part) and fees are skipped. Same rule as the CRE agent-3 evaluator. Defaults: `AGENT_ID` (else `attesta-demo-agent-3`) and `AGENT_ADDRESS` (else the buyer wallet).
