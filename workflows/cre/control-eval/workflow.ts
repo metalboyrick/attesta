@@ -76,6 +76,9 @@ const cardanoAgentSchema = z.object({
 })
 
 export const configSchema = z.object({
+	// "local-simulation" collects and evaluates with real reads but never builds a report or writes.
+	// Only config.local-simulation.json may set it; production configs must say "production".
+	mode: z.enum(['production', 'local-simulation']),
 	schedule: z.string(),
 	chainSelectorName: z.string(),
 	registryAddress: z.string(),
@@ -97,6 +100,9 @@ export const onCronTrigger = (runtime: Runtime<Config>): string => {
 	if (!network) throw new Error(`Network not found: ${config.chainSelectorName}`)
 	const evm = new cre.capabilities.EVMClient(network.chainSelector.selector)
 	const nowSec = BigInt(Math.floor(runtime.now().getTime() / 1000))
+	const local = config.mode === 'local-simulation'
+	if (!local && !/^0x[0-9a-fA-F]{40}$/.test(config.registryAddress)) throw new Error('registryAddress missing or malformed')
+	if (!local && /^0x0{40}$/.test(config.registryAddress)) throw new Error('registryAddress is the zero address')
 
 	const written: string[] = []
 	const skipped: string[] = []
@@ -119,6 +125,14 @@ export const onCronTrigger = (runtime: Runtime<Config>): string => {
 		if (fixture) {
 			// Fixture results never go on-chain, so no demo tx link can point at made-up data.
 			outcomes.forEach((o) => skipped.push(`${agent.agentId}/${o.controlId}=${o.pass ? 'PASS' : 'FAIL'} (fixture, not written)`))
+			continue
+		}
+		if (local) {
+			for (const o of outcomes) {
+				const evidenceHash = keccak256(stringToHex(o.evidence))
+				runtime.log(`evidence ${o.evidence}`.slice(0, 1000))
+				skipped.push(`${agent.agentId}/${o.controlId}=${o.pass ? 'PASS' : 'FAIL'} evidenceHash=${evidenceHash} (local-simulation, wouldWrite)`)
+			}
 			continue
 		}
 		for (const o of outcomes) {

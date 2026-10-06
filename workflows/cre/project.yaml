@@ -4,3 +4,9 @@ staging-settings:
   rpcs:
     - chain-name: ethereum-testnet-sepolia
       url: ${SEPOLIA_RPC_URL}
+
+# Receiver-free dry run target. RPC still needed: the workflow does real EVM reads.
+local-simulation:
+  rpcs:
+    - chain-name: ethereum-testnet-sepolia
+      url: ${SEPOLIA_RPC_URL}

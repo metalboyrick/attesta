@@ -1,4 +1,5 @@
 {
+  "mode": "production",
   "schedule": "0 */5 * * * *",
   "chainSelectorName": "ethereum-testnet-sepolia",
   "registryAddress": "0x0000000000000000000000000000000000000000",

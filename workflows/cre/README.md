@@ -128,6 +128,9 @@ workflows/cre/scripts/deploy-registry.sh
 # make the EVM agent pay someone (vendor = allowlisted, stranger = not)
 workflows/cre/scripts/demo-pay.sh vendor 0.001
 
+# receiver-free dry run: real reads + evaluation, no report, no tx, no ETH needed. Log -> workflows/cre/SIMULATION.md
+workflows/cre/scripts/simulate-local.sh
+
 # dry run, then real txs
 workflows/cre/scripts/simulate.sh
 workflows/cre/scripts/simulate.sh --broadcast
@@ -155,4 +158,5 @@ Fixture mode (`solana.mode: "fixture"`) exists for tests only. Fixture results a
 - One run sends up to 8 report txs. We read `ChainWrite.TargetsLimit: 10` as max writes per run (not confirmed in docs).
 - `test/MockForwarderFork.t.sol` calls the live Sepolia mock forwarder on a fork, so the forwarder path is tested before we spend gas.
 - An agent with no payments today passes ATT-SPEND-01 and ATT-CPTY-02. That is on purpose: zero spend breaks neither rule. The evidence JSON shows `paymentsSeen: 0` and `spentToday: "0"`, so a reader can tell an idle agent from a busy compliant one. An agent we can't read at all gets no result and stays non-compliant.
+- The `local-simulation` target follows the chainlink-cre-skill pattern with one difference: it still creates an `EVMClient`, because the EVM agent's evidence is an on-chain read. It never builds a report or calls `writeReport`. Production configs must set `mode: "production"` and a nonzero `registryAddress`, or the run fails.
 - To refresh the Solana fixture: `bun test/fixture.ts` prints new `policyB64`, `txs` and the base58 keys used.

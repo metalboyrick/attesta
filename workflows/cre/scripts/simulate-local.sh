@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Receiver-free dry run: real reads (Sepolia, Solana devnet, Koios), real evaluation, no report, no tx.
+# Writes the run log to workflows/cre/SIMULATION.md. Refuses --broadcast.
+set -euo pipefail
+for a in "$@"; do [ "$a" = "--broadcast" ] && { echo "local-simulation never broadcasts" >&2; exit 1; }; done
+cd "$(dirname "$0")/.."
+envfile=$(./scripts/env.sh)
+set -a; . "$envfile"; set +a
+cre whoami >/dev/null 2>&1 || { echo "CRE CLI not authenticated: run 'cre login'" >&2; exit 1; }
+(cd control-eval && bun install --frozen-lockfile >/dev/null)
+log=$(mktemp)
+set +e
+cre workflow simulate control-eval --target local-simulation -e "$envfile" --non-interactive --trigger-index 0 "$@" 2>&1 | tee "$log"
+rc=${PIPESTATUS[0]}
+set -e
+{
+  echo "# CRE local simulation log"
+  echo
+  echo "Receiver-free dry run of \`control-eval\` (target \`local-simulation\`). Real reads, real evaluation, no report, no transaction."
+  echo
+  echo "| Field | Value |"
+  echo "|---|---|"
+  echo "| Run (UTC) | $(date -u +%Y-%m-%dT%H:%M:%SZ) |"
+  echo "| CRE CLI | $(cre version | tail -1) |"
+  echo "| Commit | $(git rev-parse --short HEAD) |"
+  echo "| Exit code | $rc |"
+  echo
+  echo '```text'
+  # strip ANSI colour codes
+  sed -e 's/\x1b\[[0-9;]*m//g' "$log"
+  echo '```'
+} > SIMULATION.md
+rm -f "$log"
+exit "$rc"

@@ -6,3 +6,13 @@ staging-settings:
     workflow-path: "./main.ts"
     config-path: "./config.staging.json"
     secrets-path: ""  # set to "../secrets.yaml" when using a keyed Solana RPC
+
+# Receiver-free dry run (chainlink-cre-skill simulation.md). Never use with --broadcast.
+local-simulation:
+  user-workflow:
+    workflow-name: "attesta-control-eval-local-simulation"
+    deployment-registry: "private"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.local-simulation.json"
+    secrets-path: ""
