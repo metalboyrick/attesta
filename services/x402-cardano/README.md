@@ -55,7 +55,7 @@ On Koios the facilitator cannot read confirmation depth, so it advertises `l1Con
 - **Price.** 1 tADA (`PRICE_LOVELACE=1000000`). Pure-lovelace payments must clear the ~1 ADA min-UTxO. The buyer caps spend at 2 tADA per payment.
 - **Response.** `{agentId, compliant, controls: [{id, pass, evidenceHash, ts}], source}`.
 - **Attestation source.** With `ATTESTA_REGISTRY_ADDRESS` and `SEPOLIA_RPC_URL` set, `src/attestation.ts` reads `contracts/evm/src/AttestationRegistry.sol` through viem: `isCompliant`, `getControls`, then `getResult` per control. `source` is then `sepolia:<address>`. Without them it returns stub data and `source` is `"stub"`. The agentId in the URL maps to the registry's `bytes32` key by keccak256 of the UTF-8 string (`AGENT_ID_ENCODING=utf8` switches to right-padded bytes); a raw `0x` 32-byte hex id passes through. This matches `id32` in `workflows/cre/control-eval/workflow.ts`. That workflow also hashes control ids, so the seller maps hashes back to labels listed in `ATTESTA_CONTROL_IDS` (default: every id in `controls/catalog.json`); ids stored as padded ASCII also read back as text, and anything else stays hex.
-- **Registry failure.** If the registry read throws, the seller answers 502 and x402 cancels settlement, so the buyer is not charged. The read path was tested against the compiled contract on a local anvil node; it has not run against a Sepolia deployment yet.
+- **Registry failure.** If the registry read throws, the seller answers 502 and x402 cancels settlement, so the buyer is not charged. The read path was tested on a local anvil node and then against the live Sepolia registry `0xbc675484a8c2c51174efb8b5369250eb8337750d` (see Proof on preprod).
 
 ## One payment per request, safe retries
 
@@ -98,13 +98,14 @@ docker run --rm -p 127.0.0.1:4021:4021 -e SELLER_ADDRESS=addr_test1... attesta-x
 
 ## Proof on preprod
 
-All three payments ran on 6 Oct 2026 through the hosted Cardano Foundation facilitator, signed by the Evolution SDK buyer. Each was confirmed with 1 block (`"status": "confirmed"` in the receipt) and checked on chain through Koios. Attestation data was the stub source.
+All payments ran on 6 Oct 2026 through the hosted Cardano Foundation facilitator, signed by the Evolution SDK buyer. Each was confirmed with 1 block (`"status": "confirmed"` in the receipt) and checked on chain through Koios. Rows 1 to 3 used the stub attestation source. Row 4 read the live Sepolia `AttestationRegistry`.
 
 | What | Tx | Paid to seller |
 | --- | --- | --- |
 | First paid check, `attesta-demo-agent-3`, DEAL (HTTP 200 after 28.9 s) | [2abdf809…f8c7](https://preprod.cardanoscan.io/transaction/2abdf809e04f43fdfdd231517d34d0daf9af4773288bf51cf6cbb4f01400f8c7) | 1 tADA, fee 0.168581 |
 | `retry-demo.sh`: one payment, then 2 replays with the same nonce (balance 10003.831419 to 10002.662838 tADA, exactly 1 payment + 1 fee) | [9d963e2c…93e0](https://preprod.cardanoscan.io/transaction/9d963e2c3e14edee4832774bd9251c58fc92e6084ab1435bd4310b2a2b1a93e0) | 1 tADA, fee 0.168581 |
-| tUSDM-priced check, `rogue-bot`, `DECLINE SP-03-spend-limits` (HTTP 200 after 32.7 s) | [08c9cf69…8d43](https://preprod.cardanoscan.io/transaction/08c9cf69eb964f1b22a121aef521137977a4d557ba543d84f06d7c3182d88d43) | 1 tUSDM + 1.17663 tADA min-UTxO, fee 0.172629 |
+| tUSDM-priced check, `rogue-bot` (stub), `DECLINE SP-03-spend-limits` (HTTP 200 after 32.7 s) | [08c9cf69…8d43](https://preprod.cardanoscan.io/transaction/08c9cf69eb964f1b22a121aef521137977a4d557ba543d84f06d7c3182d88d43) | 1 tUSDM + 1.17663 tADA min-UTxO, fee 0.172629 |
+| Live registry check, `attesta-demo-agent-3`, `source: sepolia:0xbc675484a8c2c51174efb8b5369250eb8337750d`, ATT-SPEND-01 and ATT-CPTY-02 pass, DEAL (HTTP 200 after 57.7 s) | [c47d4c06…5662](https://preprod.cardanoscan.io/transaction/c47d4c065600bf15095cb4161b0a28c496d76f3e4bfc9cca08ffca1fe5cc5662) | 1 tADA |
 
 | Wallet | Address |
 | --- | --- |
