@@ -12,6 +12,8 @@ We built it at 2049 Origins in Singapore. All work in this repo started after ki
 |---|---|
 | Dashboard (fleet, safety scores, evidence pack) | https://hose-cancer-screw-reef.trycloudflare.com |
 | Paid check (x402 on Cardano preprod, returns HTTP 402 with payment terms) | https://dedicated-successfully-variance-fortune.trycloudflare.com/attest/attesta-demo-agent-2 |
+| Demo video, 2 min (recorded on testnets, waits cut and captioned) | [docs/demo/attesta-demo-2min.mp4](docs/demo/attesta-demo-2min.mp4) |
+| Demo video, 90 s cut | [docs/demo/attesta-demo-90s.mp4](docs/demo/attesta-demo-90s.mp4) |
 
 Both live links are Cloudflare quick tunnels to our hosted containers. If a link is down, the run steps below bring each part up locally.
 
