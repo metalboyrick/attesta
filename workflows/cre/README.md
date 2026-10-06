@@ -8,14 +8,29 @@ A Chainlink CRE workflow with a cron trigger. Each run collects evidence for eve
 
 | Item | Value |
 |---|---|
-| AttestationRegistry v1 (Sepolia) | [`0xbc675484a8c2c51174efb8b5369250eb8337750d`](https://sepolia.etherscan.io/address/0xbc675484a8c2c51174efb8b5369250eb8337750d), deploy block 11857314. All txs below went to v1 |
-| AttestationRegistry v2 | Code in `contracts/evm` adds the security fixes below. Not deployed yet |
+| AttestationRegistry v2 (current) | [`0x48a80a9d7e319c29e5e309d7932c467810680935`](https://sepolia.etherscan.io/address/0x48a80a9d7e319c29e5e309d7932c467810680935), deploy block 11857427 ([deploy tx](https://sepolia.etherscan.io/tx/0x3529ec1153fe3cad760d398b73cf2bd8aa61e4eda4479dab85c75b3ee239b8ac)). Adds the security fixes below |
+| AttestationRegistry v1 (retired) | [`0xbc675484a8c2c51174efb8b5369250eb8337750d`](https://sepolia.etherscan.io/address/0xbc675484a8c2c51174efb8b5369250eb8337750d), deploy block 11857314. Tables A and B went to v1 |
 | AgentWallet, EVM agent-1 (Sepolia) | [`0xdd181c02a2979d13f4124dcd628cfe96c3248f2f`](https://sepolia.etherscan.io/address/0xdd181c02a2979d13f4124dcd628cfe96c3248f2f) |
 | Forwarder accepted by the registry | `0x15fC6ae953E024d975e77382eEeC56A9101f9F88` (Sepolia MockKeystoneForwarder, from the CRE forwarder directory) |
 | Solana guard program (devnet) | `2ppMVjwBs8dqNppcJctfTJaVb3rtfFFe5cDmJyxCGuSW` |
 | CRE CLI | v1.37.0 |
 
-## First broadcast run (6 Oct 2026, 17:30 UTC)
+## Registry v2 run (6 Oct 2026, 17:51 UTC)
+
+The first run against v2. Agent-2's off-allowlist spends from Table B are still inside its window (no unfreeze since), so ATT-CPTY-02 fails again. That run stopped before agent-3's writes, so agent-3 has no v2 result yet and `isCompliant(agent-3)` is false on v2 until the next run.
+
+**Table V2. Registry v2 txs**
+
+| Agent | Control | Result | Tx |
+|---|---|---|---|
+| attesta-demo-agent-1 | ATT-SPEND-01 | PASS | [0x08f5af62...](https://sepolia.etherscan.io/tx/0x08f5af623c6b479fdbfd161b39b542e895dcbfda1f2f841bd7b5a406d3ec3047) |
+| attesta-demo-agent-1 | ATT-CPTY-02 | PASS | [0xd17ca0c7...](https://sepolia.etherscan.io/tx/0xd17ca0c7dcb4e20fe781e253f7a973141353810dab17f35c2eb98fa9dced2774) |
+| attesta-demo-agent-1 | ATT-KEY-03 | PASS | [0x6b8ca56d...](https://sepolia.etherscan.io/tx/0x6b8ca56daff25bf603b7d5b66e195b0cc89acc3518458b9544224536fe671747) |
+| attesta-demo-agent-2 | ATT-SPEND-01 | PASS | [0xb203cf14...](https://sepolia.etherscan.io/tx/0xb203cf14903b46fed0bb15c0b916bd55f5d8d4774770bd788a7bf38059f5c286) |
+| attesta-demo-agent-2 | ATT-CPTY-02 | **FAIL** | [0x3deba58e...](https://sepolia.etherscan.io/tx/0x3deba58eb5840585f550fba8a61815153813c70acda1ce637204edeb7523748b) |
+| attesta-demo-agent-2 | ATT-KEY-03 | PASS | [0x6b5fafbd...](https://sepolia.etherscan.io/tx/0x6b5fafbd472e78cdb4cfe2efd5e143ac40d7ede31aba2b2d6549a77ea22e722f) |
+
+## First broadcast run, v1 registry (6 Oct 2026, 17:30 UTC)
 
 Every tx below went through the MockKeystoneForwarder and emitted `ControlResult` from the registry. We checked the receipts, not only the simulator log. After the run, `isCompliant` was true for agent-1 and agent-3. Agent-2 was skipped because its Solana policy account did not exist yet.
 
@@ -31,7 +46,7 @@ Every tx below went through the MockKeystoneForwarder and emitted `ControlResult
 
 The evidence behind these hashes is real activity. Agent-1 paid the allowlisted vendor 0.001 ETH in [0xdf8cbb9b...](https://sepolia.etherscan.io/tx/0xdf8cbb9b0710896c5cfafa76ed0b3986a4ac7619b3813db6d96b6a67cfb1c878). Agent-3 made one payment to the x402 seller on Cardano preprod, read from Koios.
 
-## Failure flow, end to end (6 Oct 2026, 17:35 to 17:37 UTC)
+## Failure flow end to end, v1 registry (6 Oct 2026, 17:35 to 17:37 UTC)
 
 Agent-2 pays someone off its allowlist on Solana. CRE writes ATT-CPTY-02 FAIL to Sepolia. The relayer freezes the agent on Solana, and the next spend is rejected on-chain.
 
