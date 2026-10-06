@@ -25,9 +25,9 @@ Table 1. Devnet transactions for the fixed demo agent `attesta-demo-agent-2` (`2
 | spend 0.001 SOL to allowlisted payee (ok) | [`2MCLYXT3...`](https://explorer.solana.com/tx/2MCLYXT3uLCFCtcbXgk7reCghVUub2rnDVJftiStuJV5n17eLwmRZN9HwiDcWaQ4GFCAo2xjhbg1kPbJ2se2geVo?cluster=devnet) |
 | set_frozen(true) by authority | [`2VguwJFi...`](https://explorer.solana.com/tx/2VguwJFiCy92cNRdeuvir8zppBLmGFD3kwgfqrQxpzZXxJrYePsTqrwRWY4K9NCARkRZEismPfHX99KTfWifnKFF?cluster=devnet) |
 | spend while frozen, fails `AgentFrozen` (6000) | [`5NRcDpr7...`](https://explorer.solana.com/tx/5NRcDpr7kananQniFHnYwbyy8bPKAKtcMy7TQBxjq9Nkejf1F85ZYZs1KJgZgEoYBx9HMUELEJ6FRJ8ZMUeAnD9D?cluster=devnet) |
-| set_frozen(false) by hand, agent left live for CRE | [`4CjTbPgc...`](https://explorer.solana.com/tx/4CjTbPgcuimChLyyHexLSnCpFphxS8HvGQ52QxCsaLYcVkDQAg9HwQ6CA1RboKcEF7WNJWpep4TZXZfD1ZgKXHxg?cluster=devnet) |
+| set_frozen(false) by hand, before the end-to-end run in Table 2 | [`4CjTbPgc...`](https://explorer.solana.com/tx/4CjTbPgcuimChLyyHexLSnCpFphxS8HvGQ52QxCsaLYcVkDQAg9HwQ6CA1RboKcEF7WNJWpep4TZXZfD1ZgKXHxg?cluster=devnet) |
 
-The same signatures are in [`deployments/demo-devnet.json`](deployments/demo-devnet.json).
+Rows 4 to 6 (spend, freeze, rejected spend) are the `pnpm demo` run and are also in [`deployments/demo-devnet.json`](deployments/demo-devnet.json).
 
 Table 2. End-to-end run on 2026-10-06: CRE fails a control on Sepolia, and the relayer freezes the agent on devnet.
 
@@ -79,7 +79,7 @@ cargo test                   # litesvm tests in programs/attesta_guard/tests (ne
 pnpm install
 ```
 
-Live demo scripts. All act on the fixed agent `attesta-demo-agent-2` (`solana-agent.json`), never a new one. Set `SOLANA_RPC_URL` to point at a local validator.
+Live demo scripts. All act on the fixed agent `attesta-demo-agent-2` (`solana-agent.json`), never a new one. They use devnet by default. Set `SOLANA_RPC_URL` to use a local validator instead.
 
 | Command | What it does |
 |---|---|
@@ -111,4 +111,11 @@ After a rebuild, copy `target/idl/attesta_guard.json` and `target/types/attesta_
 | `solana-authority.json` | compliance authority (relayer) | `26PteCCDtK2AButaeNLTuABN91EidBnnUEG3peB6V4n9` |
 | `solana-agent.json` | demo agent `attesta-demo-agent-2` | `2pVzN7yA5qS6ozXVpxkwiSQhHy9362L9mrHwbVSBJfmM` |
 
-The demo generates a fresh agent keypair per run, so each run creates a new policy PDA. No keypairs are committed.
+No keypairs are committed.
+
+## Limits
+
+- `register_agent` takes `authority` as a plain argument; only the agent and payer sign. An agent that registers itself can name itself as authority and then unfreeze itself. The guard only binds agents that accept a real compliance authority.
+- There is no instruction to rotate the authority or to withdraw from a frozen vault. If the authority key is lost, the policy stays frozen and its SOL stays in the vault.
+- The allowlist is recorded in `SpendEvent`, not enforced on-chain. The daily cap resets at UTC midnight, so up to 2x the cap can be spent across midnight.
+- The program is deployed with an upgrade authority (`HSevic...`) held by one key.
