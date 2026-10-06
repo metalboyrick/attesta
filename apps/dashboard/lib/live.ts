@@ -2,34 +2,26 @@ import "server-only";
 import { registryAddress } from "./env";
 import { createHash } from "node:crypto";
 import { Connection, PublicKey } from "@solana/web3.js";
-import { BaseError, createPublicClient, http, isAddress, keccak256, parseAbi, parseAbiItem, stringToHex, type Address, type Hex, type PublicClient } from "viem";
+import { BaseError, createPublicClient, http, isAddress, keccak256, stringToHex, type Address, type Hex, type PublicClient } from "viem";
+import { controlResultEvent, registryAbi } from "./abi";
 import { sepolia } from "viem/chains";
 import { AGENTS } from "./agents";
 import type { ControlDef, ControlResult, TimelineEvent } from "./types";
 
-const controlResultEvent = parseAbiItem(
-  "event ControlResult(bytes32 indexed controlId, bytes32 indexed agentId, bool pass, bytes32 evidenceHash, uint64 ts)",
-);
-
-const registryAbi = parseAbi([
-  "function getControls(bytes32 agentId) view returns (bytes32[])",
-  "function getResult(bytes32 agentId, bytes32 controlId) view returns ((bool pass, bytes32 evidenceHash, uint64 ts))",
-]);
-
 const id32 = (s: string) => keccak256(stringToHex(s));
-function errText(e: unknown): string {
+export function errText(e: unknown): string {
   const msg = e instanceof BaseError ? e.shortMessage : e instanceof Error ? e.message.split("\n")[0] : String(e);
   return /\b429\b|too many requests/i.test(msg) ? "rate limited by the public RPC (429)" : msg;
 }
 const CHUNK = 9_000n;
 
+export const sepoliaClient = (): PublicClient =>
+  createPublicClient({ chain: sepolia, transport: http(process.env.SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com") });
+
 async function sepoliaResults(controls: ControlDef[]) {
   const address = registryAddress();
   if (!address || !isAddress(address)) throw new Error("REGISTRY_ADDRESS (or NEXT_PUBLIC_REGISTRY_ADDRESS) is not set");
-  const client = createPublicClient({
-    chain: sepolia,
-    transport: http(process.env.SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com"),
-  });
+  const client = sepoliaClient();
   const latest = await client.getBlockNumber();
   const from = process.env.REGISTRY_DEPLOY_BLOCK ? BigInt(process.env.REGISTRY_DEPLOY_BLOCK) : latest - 45_000n;
 

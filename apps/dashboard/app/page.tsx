@@ -4,6 +4,7 @@ import { ChainTag } from "@/components/chain";
 import { Ago } from "@/components/client";
 import { SourceBar } from "@/components/source";
 import { StatusPill } from "@/components/status";
+import { LookupForm } from "@/components/lookup-form";
 import { SafetyScoreBadge } from "@/components/score";
 import { SCORE_DEFINITION } from "@/lib/score";
 import { getSnapshot } from "@/lib/snapshot";
@@ -87,6 +88,10 @@ export default async function FleetPage() {
       </ul>
 
       <p className="mt-3 max-w-[70ch] text-xs text-ink-3">{SCORE_DEFINITION} Tap a score to see the transactions behind it.</p>
+
+      <div className="mt-10 border-t border-rule pt-8">
+        <LookupForm />
+      </div>
 
       <dl className="mt-10 grid grid-cols-3 gap-4 md:max-w-2xl">
         {[

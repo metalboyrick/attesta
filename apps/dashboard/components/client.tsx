@@ -100,6 +100,7 @@ export function ThemeToggle() {
 const NAV = [
   { href: "/", label: "Fleet" },
   { href: "/timeline", label: "Timeline" },
+  { href: "/lookup", label: "Lookup" },
   { href: "/auditor", label: "Auditor" },
 ];
 
@@ -127,7 +128,7 @@ export function Nav({ variant }: { variant: "top" | "bottom" }) {
       aria-label="Main"
       className="fixed inset-x-0 bottom-0 z-20 border-t border-rule bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
     >
-      <div className="grid grid-cols-3">
+      <div className="grid grid-cols-4">
         {NAV.map(n => (
           <Link
             key={n.href}

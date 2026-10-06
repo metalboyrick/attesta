@@ -19,11 +19,14 @@ pnpm build && pnpm start       # production
 | `/` | Fleet: three agents, status (compliant / failing / frozen), latest result per control, last run |
 | `/agents/[slug]` | Eight catalogue controls with pass/fail, SOC 2 TSC and ISO/IEC 42001 Annex A ids, evidence hash, registry tx. Tap a control for its test and evidence spec. |
 | `/timeline` | Control runs, guard freezes, paid x402 checks. Filters: `?show=controls\|guard\|x402` |
+| `/lookup?id=<label or 0x bytes32>` | Read any agent's latest results straight from the registry: score, `isCompliant`, controls |
 | `/auditor` | Evidence pack preview and download, framework coverage, `cast` command to check a row on-chain |
 | `/api/evidence?format=json\|csv&scope=latest\|history&agent=evm\|solana\|cardano` | Evidence pack download |
 | `/api/snapshot` | Everything the pages render, as JSON |
 
-Pages refresh their data every 15 s while the tab is visible.
+Pages refresh their data every 15 s while the tab is visible. Click a control title for its evidence drawer. **Verify on-chain** in the drawer has the browser re-read that result from Sepolia over a public RPC (`PUBLIC_SEPOLIA_RPC_URL`, default PublicNode) and checks (1) `getResult` matches what the page showed and (2) the linked tx emitted that exact `ControlResult`. Off in fixture mode. Everything public is read-only.
+
+Tests: `pnpm test` (node --test, no extra deps).
 
 ## Docker
 

@@ -2,45 +2,20 @@ import { ArrowLeft, DownloadSimple, LockSimple } from "@phosphor-icons/react/ssr
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { keccak256, stringToHex } from "viem";
-import { ChainTag, TxLink, short } from "@/components/chain";
+import { ChainTag, short } from "@/components/chain";
 import { Ago, CopyHash } from "@/components/client";
-import { FrameworkIds } from "@/components/frameworks";
 import { SourceBar } from "@/components/source";
-import { PassMark, StatusPill } from "@/components/status";
+import { StatusPill } from "@/components/status";
 import { SafetyScoreBadge } from "@/components/score";
 import { SCORE_DEFINITION } from "@/lib/score";
 import { getSnapshot } from "@/lib/snapshot";
-import type { ControlDef } from "@/lib/types";
+import { verifyConfig } from "@/lib/env";
+import { ControlsTable } from "@/components/controls-table";
 
 export const dynamic = "force-dynamic";
 
 const HISTORY = 12;
 
-function ControlSpec({ c }: { c: ControlDef }) {
-  return (
-    <details className="group">
-      <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-        <span className={`font-medium leading-snug underline decoration-rule-strong decoration-dotted underline-offset-4 group-open:decoration-ink-3 ${c.implemented ? "" : "text-ink-2"}`}>
-          {c.title}
-        </span>
-        <span className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <span className="font-mono text-[11px] text-ink-2">{c.id}</span>
-          <FrameworkIds soc2={c.soc2} iso={c.iso42001} />
-        </span>
-      </summary>
-      <dl className="mt-3 space-y-2 border-l-2 border-rule pl-3 text-sm text-ink-2">
-        {[["Objective", c.objective], ["Test", c.test], ["Evidence", c.evidence]]
-          .filter(([, v]) => v)
-          .map(([k, v]) => (
-            <div key={k}>
-              <dt className="text-xs font-medium text-ink-3">{k}</dt>
-              <dd className="leading-relaxed">{v}</dd>
-            </div>
-          ))}
-      </dl>
-    </details>
-  );
-}
 
 export default async function AgentPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -53,6 +28,7 @@ export default async function AgentPage({ params }: { params: Promise<{ slug: st
   const byRun = new Map(mine.map(r => [`${r.controlId}:${r.ts}`, r]));
   const freeze = snap.events.find(e => e.kind === "freeze" && e.agentSlug === slug);
   const registryKey = keccak256(stringToHex(agent.registryId));
+  const verify = verifyConfig(snap.mode);
 
   return (
     <>
@@ -135,57 +111,7 @@ export default async function AgentPage({ params }: { params: Promise<{ slug: st
           </div>
         </div>
 
-        {/* Desktop: table. Phone: stacked blocks. */}
-        <table className="mt-5 hidden w-full border-collapse text-left md:table">
-          <thead>
-            <tr className="border-b border-rule-strong text-xs text-ink-3">
-              <th scope="col" className="py-2 pr-4 font-medium">Control</th>
-              <th scope="col" className="py-2 pr-4 font-medium">Result</th>
-              <th scope="col" className="py-2 pr-4 font-medium">Evidence hash</th>
-              <th scope="col" className="py-2 pr-4 font-medium">Registry tx</th>
-              <th scope="col" className="py-2 font-medium">Run</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-rule">
-            {snap.controls.map(c => {
-              const r = agent.latest[c.id];
-              return (
-                <tr key={c.id} className={r && !r.pass ? "bg-fail-wash/60" : undefined}>
-                  <td className="max-w-md py-3.5 pr-4 align-top">
-                    <ControlSpec c={c} />
-                  </td>
-                  <td className="py-3.5 pr-4 align-top"><PassMark pass={r?.pass} implemented={c.implemented} /></td>
-                  <td className="py-3.5 pr-4 align-top">{r ? <CopyHash value={r.evidenceHash} display={short(r.evidenceHash, 8, 6)} /> : "–"}</td>
-                  <td className="py-3.5 pr-4 align-top">{r ? <TxLink synthetic={snap.mode === "fixture"} chain={r.chain} tx={r.txHash} /> : "–"}</td>
-                  <td className="tnum py-3.5 align-top text-sm text-ink-3">{r ? <Ago ts={r.ts} serverNow={snap.generatedAt} /> : "–"}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-
-        <ul className="mt-5 divide-y divide-rule border-y border-rule md:hidden">
-          {snap.controls.map(c => {
-            const r = agent.latest[c.id];
-            return (
-              <li key={c.id} className="py-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <ControlSpec c={c} />
-                  </div>
-                  <PassMark pass={r?.pass} implemented={c.implemented} />
-                </div>
-                {r && (
-                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
-                    <CopyHash value={r.evidenceHash} display={short(r.evidenceHash, 6, 4)} />
-                    <TxLink synthetic={snap.mode === "fixture"} chain={r.chain} tx={r.txHash} />
-                    <span className="text-xs text-ink-3"><Ago ts={r.ts} serverNow={snap.generatedAt} /></span>
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+        <ControlsTable controls={snap.controls} latest={agent.latest} agentKey={registryKey} verify={verify} synthetic={snap.mode === "fixture"} serverNow={snap.generatedAt} />
       </section>
 
       {runs.length > 1 && (
