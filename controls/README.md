@@ -14,16 +14,16 @@ Each control in `catalog.json` has these fields:
 - **test:** the exact check the workflow runs.
 - **evidence:** the data we put in canonical JSON and hash with keccak256.
 - **frequency:** how often the check runs.
-- **implemented:** `true` if the workflow runs this check today.
+- **implemented:** `true` if the check is written in the workflow code (`workflows/cre/control-eval/lib/controls.ts`) with unit tests. It does not mean a result is on-chain yet.
 - **soc2_tsc / iso42001_annex_a:** the framework criteria the control helps with.
 
 ## The controls
 
-Table 1 lists all eight controls. Three run today. The other five are designed but not built yet.
+Table 1 lists all eight controls. Three are coded and unit-tested in the workflow. None has written a result on-chain yet: the first Sepolia run is waiting on a CRE API key and test ETH. The other five are designed but not built.
 
 **Table 1. Attesta control catalog v0.1.0**
 
-| ID | Title | SOC 2 TSC | ISO/IEC 42001 Annex A | Implemented |
+| ID | Title | SOC 2 TSC | ISO/IEC 42001 Annex A | Coded |
 |----|-------|-----------|-----------------------|-------------|
 | ATT-SPEND-01 | UTC-day spend within approved cap | CC7.2, PI1.3 | A.6.2.6, A.9.4 | Yes |
 | ATT-CPTY-02 | Counterparties limited to allowlist | CC6.1, CC6.6, CC7.2 | A.6.2.6, A.9.4 | Yes |

@@ -13,7 +13,21 @@ We only run it with `cre workflow simulate --broadcast`. Deploying to the CRE ne
 | Forwarder accepted by contract | `0x15fC6ae953E024d975e77382eEeC56A9101f9F88` (Sepolia MockKeystoneForwarder, per CRE forwarder directory) |
 | Broadcast tx | _pending_ |
 | Etherscan | _pending_ |
-| Solana agent | fixture mode until `attesta_guard` is on devnet (program id `2ppMVjwBs8dqNppcJctfTJaVb3rtfFFe5cDmJyxCGuSW`) |
+| Solana agent | live devnet RPC. Program `2ppMVjwBs8dqNppcJctfTJaVb3rtfFFe5cDmJyxCGuSW` is not deployed yet, so the workflow skips agent-2 (no report) until it is |
+
+## Agents
+
+Canonical ids, shared by every service. `agentId` on-chain is `keccak256(utf8 id)`.
+
+**Table 0. Demo agents**
+
+| Agent id | Chain | Evaluated by this workflow |
+|---|---|---|
+| `attesta-demo-agent-1` | Sepolia, `AgentWallet` | yes |
+| `attesta-demo-agent-2` | Solana devnet, agent `2pVzN7yA5qS6ozXVpxkwiSQhHy9362L9mrHwbVSBJfmM`, policy PDA `2QAPFh8haAazrqeRhnZNqdVPittts2oQsaMQXtkTm6ZH` | yes, once the guard program is deployed and the agent registered |
+| `attesta-demo-agent-3` | Cardano preprod | not yet |
+
+If an agent's evidence can't be fetched, the workflow writes nothing for it and logs `skipped`. A missing read is not a FAIL, because a FAIL freezes the agent.
 
 ## Controls
 
@@ -24,10 +38,10 @@ The full catalog is in `controls/catalog.json`. Table 1 shows what this workflow
 | Control | Pass when | EVM evidence | Solana evidence |
 |---|---|---|---|
 | ATT-SPEND-01 | today's spend <= approved cap, and on-chain cap <= approved cap | `AgentWallet.state()` | `AgentPolicy` account (`getAccountInfo`) |
-| ATT-CPTY-02 | every payee in the window is on the allowlist | `Payment` logs, last 100 blocks | `SpendEvent` in last N txs (`getSignaturesForAddress` + `getTransaction`) |
+| ATT-CPTY-02 | every payee in the window is on the allowlist, and (Solana) no `SpendEvent` has `allowlisted = false` | `Payment` logs, last 100 blocks | `SpendEvent` in last N txs (`getSignaturesForAddress` + `getTransaction`) |
 | ATT-KEY-03 | signer and authority equal the registered ones | `AgentWallet.state()` | `AgentPolicy.agent` / `.authority` |
 
-The "policy of record" (approved cap, allowlist, registered signer and authority) lives in `config.staging.json` per agent. On-chain state is compared against it, so raising the cap on-chain or swapping a key shows up as a failure.
+The "policy of record" (approved cap, allowlist, registered signer and authority) lives in `config.staging.json` per agent. On-chain state is compared against it, so raising the cap on-chain or swapping a key shows up as a failure. An empty `allowlist` in the config means "use the allowlist stored in the Solana AgentPolicy"; the evidence JSON records which one was used.
 
 Evaluation logic is pure TypeScript in `control-eval/lib/controls.ts`, with unit tests in `control-eval/test/` (`bun test`).
 
@@ -110,7 +124,9 @@ cast call <registry> "isCompliant(bytes32)(bool)" $(cast keccak attesta-demo-age
 
 1. `demo-pay.sh vendor` then `simulate.sh --broadcast`: all three EVM controls pass, `isCompliant` is true.
 2. `demo-pay.sh stranger` then `simulate.sh --broadcast`: ATT-CPTY-02 fails for the EVM agent, `isCompliant` turns false.
-3. The Solana fixture is built to fail ATT-CPTY-02 (one payment to a non-allowlisted key), so the Solana agent shows a FAIL from the first run.
+3. Solana agent-2 spends to a key that is not on its allowlist (spend still succeeds on-chain, `SpendEvent.allowlisted = false`). Next run writes ATT-CPTY-02 FAIL for agent-2; the relayer freezes it.
+
+Fixture mode (`solana.mode: "fixture"`) exists for tests only. Fixture results are evaluated and logged but never written on-chain, so no demo tx can point at made-up data.
 
 ## Things that bite
 
@@ -118,6 +134,6 @@ cast call <registry> "isCompliant(bytes32)(bool)" $(cast keccak attesta-demo-age
 - The simulator's forwarder does not pass real workflow metadata. Leave `setExpectedAuthor` at `address(0)` while simulating. Turn it on (and `setForwarderAddress` to the production KeystoneForwarder) once we have deploy access.
 - CRE caps a log query at 100 blocks. ATT-CPTY-02 on EVM only sees the last 100 blocks per run. With a 5 minute cron (about 25 blocks) the windows overlap, so nothing is skipped while the workflow runs on schedule.
 - `evmLogBlockTag` is `latest` for the demo so a payment shows up on the next run. Use `finalized` on a real DON; `latest` can differ between nodes.
-- One run sends 6 report txs (2 agents x 3 controls). `cre workflow limits export` shows `ChainWrite.TargetsLimit: 10`. We read that as max writes per run (not confirmed in docs), which would cap us at 3 agents per run.
+- One run sends up to 6 report txs (2 agents x 3 controls). `cre workflow limits export` shows `ChainWrite.TargetsLimit: 10`. We read that as max writes per run (not confirmed in docs), which would cap us at 3 agents per run.
 - `test/MockForwarderFork.t.sol` calls the live Sepolia mock forwarder on a fork, so the forwarder path is tested before we spend gas.
 - To refresh the Solana fixture: `bun test/fixture.ts` prints new `policyB64`, `txs` and the base58 keys used.
