@@ -40,11 +40,15 @@ function ControlStrip({ agent, snap }: { agent: AgentView; snap: Snapshot }) {
 
 export default async function FleetPage() {
   const snap = await getSnapshot();
-  const day = snap.generatedAt - 86_400;
   const latest = snap.agents.flatMap(a => Object.values(a.latest));
   const passing = latest.filter(r => r?.pass).length;
-  const freezes = snap.events.filter(e => e.kind === "freeze" && e.ts >= day).length;
-  const purchases = snap.events.filter(e => e.kind === "purchase" && e.ts >= day).length;
+  const from = snap.since ?? 0;
+  const freezes = snap.events.filter(e => e.kind === "freeze" && e.ts >= from).length;
+  const purchases = snap.events.filter(e => e.kind === "purchase" && e.ts >= from).length;
+  const window =
+    snap.since === null
+      ? "in this data"
+      : `since registry deploy, ${new Date(snap.since * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })}`;
 
   return (
     <>
@@ -96,8 +100,8 @@ export default async function FleetPage() {
       <dl className="mt-10 grid grid-cols-3 gap-4 md:max-w-2xl">
         {[
           [`${passing}/${latest.length}`, "controls passing now"],
-          [String(freezes), "guard freezes, 24 h"],
-          [String(purchases), "paid checks, 24 h"],
+          [String(freezes), `guard freezes ${window}`],
+          [String(purchases), `paid checks ${window}`],
         ].map(([value, label]) => (
           <div key={label} className="flex flex-col-reverse">
             <dt className="mt-1 text-xs text-ink-3 md:text-sm">{label}</dt>

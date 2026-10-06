@@ -28,12 +28,16 @@ async function sepoliaResults(controls: ControlDef[]) {
   const agentByHash = new Map(AGENTS.map(a => [id32(a.registryId), a.slug]));
   const controlByHash = new Map(controls.map(c => [id32(c.id), c.id]));
 
+  // Counters on the fleet page start at the registry deploy, so they don't decay to 0 like a rolling window.
+  const since = process.env.REGISTRY_DEPLOY_BLOCK
+    ? Number((await client.getBlock({ blockNumber: from })).timestamp)
+    : null;
   try {
-    return { results: await logResults(client, address as Address, from, latest, agentByHash, controlByHash), address, fromState: false };
+    return { results: await logResults(client, address as Address, from, latest, agentByHash, controlByHash), address, since, fromState: false };
   } catch (e) {
     // Some public RPCs prune old logs. Contract state still has the latest result per control, without tx hashes.
     const results = await stateResults(client, address as Address, controlByHash);
-    return { results, address, fromState: true, logError: errText(e) };
+    return { results, address, since, fromState: true, logError: errText(e) };
   }
 }
 
@@ -104,17 +108,24 @@ async function solanaGuard() {
   const info = await conn.getAccountInfo(policy);
   const frozen = info ? info.data[FROZEN_OFFSET] === 1 : false;
 
-  const sigs = await conn.getSignaturesForAddress(policy, { limit: 15 });
+  const sigs = await conn.getSignaturesForAddress(policy, { limit: 60 });
   const ok = sigs.filter(s => !s.err).map(s => s.signature);
   // Confirmed txs never change, so each signature is fetched once. Sequential,
   // because public devnet RPC rate-limits batched getTransactions.
+  let partial = false;
   for (const sig of ok) {
     if (solanaTxEvents.has(sig)) continue;
-    const tx = await conn.getTransaction(sig, { maxSupportedTransactionVersion: 0 });
+    // A rate limit here should not hide the frozen flag read above; finish the history on a later poll.
+    const tx = await conn.getTransaction(sig, { maxSupportedTransactionVersion: 0 }).catch(() => undefined);
+    if (tx === undefined) {
+      partial = true;
+      break;
+    }
     if (tx) solanaTxEvents.set(sig, frozenEvents(sig, tx.meta?.logMessages ?? []));
+    await new Promise(r => setTimeout(r, 150)); // stay under devnet's per-method rate limit on cold start
   }
   const events = ok.flatMap(sig => solanaTxEvents.get(sig) ?? []);
-  return { frozen, events, policy: policy.toBase58(), missing: !info };
+  return { frozen, events, policy: policy.toBase58(), missing: !info, partial };
 }
 
 // On globalThis: Next bundles pages and route handlers separately, so plain module state is not shared.
@@ -236,11 +247,13 @@ export async function liveData(controls: ControlDef[]) {
     frozen.solana = sol.value.frozen;
     events.push(...sol.value.events);
     notes.push(`Guard policy ${sol.value.policy} on Solana devnet`);
+    if (sol.value.partial) errors.push("Solana: guard history is still loading (public RPC rate limit). Freeze state is current.");
     if (sol.value.missing) errors.push(`Solana: policy account ${sol.value.policy} not found on devnet. Is the guard deployed and the agent registered?`);
   } else errors.push(`Solana: ${errText(sol.reason)}`);
 
   if (ada.status === "fulfilled") events.push(...ada.value);
   else errors.push(`Cardano: ${errText(ada.reason)}`);
 
-  return { results, events, frozen, errors, notes };
+  const since = evm.status === "fulfilled" ? evm.value.since : null;
+  return { results, events, frozen, errors, notes, since };
 }

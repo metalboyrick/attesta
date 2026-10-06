@@ -42,12 +42,13 @@ export async function getSnapshot(): Promise<Snapshot> {
   const mode = dataMode();
   const data =
     mode === "fixture"
-      ? { ...fixtureData(controls), errors: [] as string[], notes: ["Fixture data. Hashes and tx links are synthetic."] }
+      ? { ...fixtureData(controls), errors: [] as string[], notes: ["Fixture data. Hashes and tx links are synthetic."], since: null }
       : await liveData(controls);
 
   return {
     mode,
     generatedAt: Math.floor(Date.now() / 1000),
+    since: data.since,
     catalogSource: source,
     catalogVersion: version,
     notes: data.notes,

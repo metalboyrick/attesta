@@ -54,6 +54,8 @@ export type AgentView = AgentDef & {
 
 export type Snapshot = {
   mode: "fixture" | "live";
+  /** unix seconds of the registry deploy block; fleet counters count from here. null = count everything loaded */
+  since: number | null;
   generatedAt: number;
   catalogSource: "catalog.json" | "bundled";
   catalogVersion: string;
