@@ -7,10 +7,12 @@ cd "$(dirname "$0")/.."
 envfile=$(./scripts/env.sh)
 set -a; . "$envfile"; set +a
 cre whoami >/dev/null 2>&1 || { echo "CRE CLI not authenticated: run 'cre login'" >&2; exit 1; }
-(cd control-eval && bun install --frozen-lockfile >/dev/null)
+# Precompiled WASM skips the compile step (~8 s). SKIP_PREBUILT=1 forces a normal compile.
+wasm_args=()
+[ "${SKIP_PREBUILT:-0}" = 1 ] || wasm_args=(--wasm "./$(./scripts/build-wasm.sh)")
 log=$(mktemp)
 set +e
-cre workflow simulate control-eval --target local-simulation -e "$envfile" --non-interactive --trigger-index 0 "$@" 2>&1 | tee "$log"
+cre workflow simulate control-eval --target local-simulation -e "$envfile" --non-interactive --trigger-index 0 "${wasm_args[@]}" "$@" 2>&1 | tee "$log"
 rc=${PIPESTATUS[0]}
 set -e
 {

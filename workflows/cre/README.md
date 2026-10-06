@@ -34,6 +34,10 @@ The first run against v2. Agent-2's off-allowlist spends from Table B are still 
 
 **Run time.** Measured wall clock from `simulate.sh` start to the last receipt: the agent-3-only run (2 writes) took 37 s. About 11 s is startup (dependency check, WASM compile, simulator init), then each write waits for its own receipt, about 12 s per Sepolia block, one after another. Expect about 50 s for an agent-2-only run (3 writes) and about 110 s for a full run (8 writes).
 
+**Faster startup.** `simulate.sh` and `simulate-local.sh` now pass a precompiled WASM (`scripts/build-wasm.sh`, rebuilt only when a source file changes) via `--wasm`. Measured with dry runs (no tx) for agent-2: start to trigger went from about 11 s to about 2 s, and a full agent-2 dry run takes 3.5 s. A broadcast agent-2 run should take about 2 s + 1.5 s of reads + 3 writes at about 12 s each, so about 40 s. That's an estimate until we broadcast again. Run `scripts/build-wasm.sh` once before the demo so the first run doesn't compile. `SKIP_PREBUILT=1` forces a normal compile.
+
+**Solana rate limit.** The public devnet RPC returned HTTP 429 on `getTransaction` after several back-to-back runs. The agent is then skipped, never failed. Leave about a minute between runs on the public RPC, or use a keyed Solana RPC.
+
 ## First broadcast run, v1 registry (6 Oct 2026, 17:30 UTC)
 
 Every tx below went through the MockKeystoneForwarder and emitted `ControlResult` from the registry. We checked the receipts, not only the simulator log. After the run, `isCompliant` was true for agent-1 and agent-3. Agent-2 was skipped because its Solana policy account did not exist yet.
