@@ -47,7 +47,7 @@ Agent-2 pays someone off its allowlist on Solana. CRE writes ATT-CPTY-02 FAIL to
 | 3 | Solana devnet | Relayer sees the FAIL and calls `set_frozen(true)`. Memo links the Sepolia tx | [2P8GkxMn...](https://explorer.solana.com/tx/2P8GkxMnBBfcRd7htXypUBPBPzAikT96R3xnyrGgwfUbihhamPSG52vw1hVZuuitC7myVJK2yRShWhirh7MQSCUB?cluster=devnet) |
 | 4 | Solana devnet | Agent-2 tries to pay the allowlisted payee. Rejected with `AgentFrozen` (custom error 6000) | [39or4JG4...](https://explorer.solana.com/tx/39or4JG4js1iUkPMexRomWEPt9dyjGSS6K3gqCd1F3Mzs2FnyAzaEqjoJpfVLNx2xLDhDJ2Fhfo9Qu2RtTyFrCgZ?cluster=devnet) |
 
-From the Sepolia FAIL (17:36:24 UTC log) to the freeze on Solana (block time 17:36:08 UTC by the devnet clock) took under a minute. Clocks differ between the simulator host and the Solana cluster, so read that as "within a minute", not a precise latency.
+The Sepolia FAIL block (11857358) has timestamp 17:36:00 UTC. The freeze tx has Solana block time 17:36:08 UTC. That is 8 seconds by the two chains' block clocks, which can drift by a few seconds.
 
 Run it again: `cd programs/solana && pnpm spend -- unknown 2000000`, then `workflows/cre/scripts/simulate.sh --config ./config.agent-2.json --broadcast` (3 writes, about 0.002 Sepolia ETH).
 
