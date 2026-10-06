@@ -11,6 +11,8 @@ Anchor program that sits in front of an AI agent's wallet. Every agent spend goe
 | Explorer | https://explorer.solana.com/address/2ppMVjwBs8dqNppcJctfTJaVb3rtfFFe5cDmJyxCGuSW?cluster=devnet |
 | IDL | [`idl/attesta_guard.json`](idl/attesta_guard.json) (TS types: `idl/attesta_guard.types.ts`) |
 
+Deployer funding: 0.488 devnet SOL from our default dev wallet, [`2mQov9Wv...`](https://explorer.solana.com/tx/2mQov9WvhSZTeYt5e2MGkucHZvhPnbcUXg9mYYMFEWgguH2Aqv2WzPfzUsbGuwvHZa61VJXnAeAX98cbrQE6xdHH?cluster=devnet).
+
 Demo transaction signatures are in [`deployments/demo-devnet.json`](deployments/demo-devnet.json) once the demo has run on devnet.
 
 ## Accounts
@@ -56,11 +58,8 @@ pnpm demo                    # devnet: register -> spend ok -> freeze -> spend r
 Deploy (keys live outside the repo in `~/.attesta-secrets`, chmod 600):
 
 ```bash
-cp ~/.attesta-secrets/solana-guard-program.json target/deploy/attesta_guard-keypair.json
-anchor build
-solana program deploy target/deploy/attesta_guard.so \
-  --program-id target/deploy/attesta_guard-keypair.json \
-  --keypair ~/.attesta-secrets/solana-deployer.json -u devnet
+scripts/deploy-devnet.sh                 # build + deploy + refresh idl/
+DEMO_AGENT=persistent pnpm demo          # uses solana-agent.json = attesta-demo-agent-2
 ```
 
 After a rebuild, copy `target/idl/attesta_guard.json` and `target/types/attesta_guard.ts` into `idl/` so the relayer and dashboard pick up changes.
@@ -72,5 +71,6 @@ After a rebuild, copy `target/idl/attesta_guard.json` and `target/types/attesta_
 | `solana-deployer.json` | fee payer, upgrade authority | `HSevicfphZE3y4zHpKd5Cc1AuPn9DyZhNgXGnjsgE4pP` |
 | `solana-guard-program.json` | program keypair | `2ppMVjwBs8dqNppcJctfTJaVb3rtfFFe5cDmJyxCGuSW` |
 | `solana-authority.json` | compliance authority (relayer) | `26PteCCDtK2AButaeNLTuABN91EidBnnUEG3peB6V4n9` |
+| `solana-agent.json` | demo agent `attesta-demo-agent-2` | `2pVzN7yA5qS6ozXVpxkwiSQhHy9362L9mrHwbVSBJfmM` |
 
 The demo generates a fresh agent keypair per run, so each run creates a new policy PDA. No keypairs are committed.
