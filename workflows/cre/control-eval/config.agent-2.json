@@ -1,0 +1,29 @@
+{
+  "mode": "production",
+  "schedule": "0 */5 * * * *",
+  "chainSelectorName": "ethereum-testnet-sepolia",
+  "registryAddress": "0xbc675484a8c2c51174efb8b5369250eb8337750d",
+  "gasLimit": "1500000",
+  "evmLogBlockTag": "latest",
+  "agents": [
+    {
+      "agentId": "attesta-demo-agent-2",
+      "kind": "solana",
+      "solana": {
+        "mode": "rpc",
+        "rpcUrl": "https://api.devnet.solana.com",
+        "policyPda": "2QAPFh8haAazrqeRhnZNqdVPittts2oQsaMQXtkTm6ZH",
+        "commitment": "confirmed",
+        "maxTxs": 8
+      },
+      "policy": {
+        "approvedDailyCap": "50000000",
+        "allowlist": [
+          "3yLbm2Dp7LjH8DW29SdtCMugzrmYxpMwRussm9xATWw6"
+        ],
+        "registeredSigner": "2pVzN7yA5qS6ozXVpxkwiSQhHy9362L9mrHwbVSBJfmM",
+        "registeredAuthority": "26PteCCDtK2AButaeNLTuABN91EidBnnUEG3peB6V4n9"
+      }
+    }
+  ]
+}
