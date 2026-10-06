@@ -3,7 +3,9 @@
 // Keys are read from ~/.attesta-secrets (override with ATTESTA_SECRETS):
 //   solana-deployer.json   fee payer, funds the vault
 //   solana-authority.json  compliance authority (relayer)
-// A fresh agent keypair is generated per run so the policy PDA is new each time.
+// By default a fresh agent keypair is generated per run so the policy PDA is new.
+// DEMO_AGENT=persistent uses solana-agent.json (the relayer's "attesta-demo-agent-2"):
+// registers it on first run, and unfreezes it first if a previous run froze it.
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -35,7 +37,7 @@ async function main() {
   const connection = new Connection(RPC, "confirmed");
   const payer = loadKeypair("solana-deployer.json");
   const authority = loadKeypair("solana-authority.json");
-  const agent = Keypair.generate();
+  const agent = process.env.DEMO_AGENT === "persistent" ? loadKeypair("solana-agent.json") : Keypair.generate();
   const recipient = Keypair.generate().publicKey;
 
   const provider = new anchor.AnchorProvider(connection, new anchor.Wallet(payer), {
@@ -60,12 +62,25 @@ async function main() {
   const sigs: Record<string, string> = {};
 
   const dailyCap = new BN(0.05 * LAMPORTS_PER_SOL);
-  sigs.register = await program.methods
-    .registerAgent(authority.publicKey, dailyCap, [recipient])
-    .accounts({ payer: payer.publicKey, agent: agent.publicKey })
-    .signers([agent])
-    .rpc();
-  console.log("1. register_agent", explorer(sigs.register));
+  const existing = await program.account.agentPolicy.fetchNullable(policy);
+  if (!existing) {
+    sigs.register = await program.methods
+      .registerAgent(authority.publicKey, dailyCap, [recipient])
+      .accounts({ payer: payer.publicKey, agent: agent.publicKey })
+      .signers([agent])
+      .rpc();
+    console.log("1. register_agent", explorer(sigs.register));
+  } else {
+    console.log("1. policy exists, frozen =", existing.frozen);
+    if (existing.frozen) {
+      sigs.unfreeze = await program.methods
+        .setFrozen(false, 0)
+        .accountsPartial({ authority: authority.publicKey, policy })
+        .signers([authority])
+        .rpc();
+      console.log("   unfreeze      ", explorer(sigs.unfreeze));
+    }
+  }
 
   sigs.fundVault = await sendAndConfirmTransaction(
     connection,

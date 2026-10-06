@@ -1,0 +1,29 @@
+{
+  "name": "@attesta/relayer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Mirrors failing Attesta control results from Sepolia to the Solana guard (freeze), and collects Solana guard spend as SpendRecords.",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "relay": "tsx src/relayer.ts",
+    "collect": "tsx src/collect-solana.ts",
+    "e2e:local": "tsx scripts/e2e-local.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anchor-lang/core": "1.0.0",
+    "@solana/web3.js": "1.99.0",
+    "bn.js": "5.2.2",
+    "dotenv": "^16.4.5",
+    "tsx": "4.23.15",
+    "viem": "2.57.3"
+  },
+  "devDependencies": {
+    "@types/bn.js": "^5.2.0",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}
